@@ -16,12 +16,6 @@ npm run dev
 npm start
 ```
 
-Caso prefira utilizar Python:
-
-```powershell
-python -m http.server 8080
-```
-
 Depois acesse `http://localhost:8080`.
 
 ## Funcionalidades incluídas
