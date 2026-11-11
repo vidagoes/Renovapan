@@ -1,0 +1,26 @@
+{
+  "name": "renovapan",
+  "version": "1.0.0",
+  "description": "Protótipo funcional e responsivo feito apenas com HTML, CSS e JavaScript.",
+  "main": "index.js",
+  "scripts": {
+    "start": "live-server --port=8080",
+    "dev": "live-server --port=8080",
+    "server": "live-server --port=8080"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vidagoes/Renovapan.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/vidagoes/Renovapan/issues"
+  },
+  "homepage": "https://github.com/vidagoes/Renovapan#readme",
+  "devDependencies": {
+    "live-server": "^1.2.2"
+  }
+}

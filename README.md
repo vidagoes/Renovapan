@@ -6,10 +6,20 @@ Protótipo funcional e responsivo feito apenas com HTML, CSS e JavaScript.
 
 Opção mais simples: abra `index.html` em um navegador moderno.
 
-Para uma visualização mais confiável, sirva a pasta com um servidor estático local. Por exemplo, se o Python estiver instalado:
+Para uma visualização mais confiável com servidor local e recarregamento automático (Live Reload):
+
+Com Node.js / npm:
 
 ```powershell
-python -m http.server 8080 --directory site-mvp
+npm run dev
+# ou
+npm start
+```
+
+Caso prefira utilizar Python:
+
+```powershell
+python -m http.server 8080
 ```
 
 Depois acesse `http://localhost:8080`.
