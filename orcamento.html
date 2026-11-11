@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Solicite um orçamento demonstrativo à RENOVAPAN." /><title>Solicitar orçamento | RENOVAPAN</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet" />
+    <meta name="theme-color" content="#202B50" />
+    <link rel="icon" type="image/png" href="assets/logo-renovapan-oficial.png" />
+    <link rel="stylesheet" href="css/styles.css" />
+    <link rel="stylesheet" href="css/reference.css" />
+    <script src="js/data.js" defer></script><script src="js/components.js" defer></script><script src="js/orcamento.js" defer></script><script src="js/main.js" defer></script>
+  </head>
+  <body data-page="orcamento">
+    <a class="skip-link" href="#conteudo">Ir para o conteúdo</a><div id="site-header"></div>
+    <main id="conteudo">
+      <section class="quote-page">
+        <div class="container quote-layout">
+          <div class="quote-copy reveal"><span class="eyebrow"><span></span> Solicite um orçamento</span><h1>Conte o que sua produção precisa.</h1><p>Preencha os dados ao lado. Esta versão é demonstrativa e não envia informações; em uma próxima etapa, o formulário poderá ser conectado ao canal oficial da empresa.</p><div class="quote-direct"><a class="button button--primary" href="https://wa.me/5511952031535" target="_blank" rel="noopener noreferrer">Falar com a RENOVAPAN no WhatsApp ↗</a><p>Ou ligue: <a href="tel:+5511952031535">(11) 95203-1535</a></p></div><div class="quote-steps"><div><span>01</span><p><strong>Você descreve</strong> o equipamento ou a necessidade.</p></div><div><span>02</span><p><strong>A RENOVAPAN avalia</strong> as informações iniciais.</p></div><div><span>03</span><p><strong>O próximo passo</strong> é combinado de forma direta.</p></div></div><div class="demo-alert"><strong>Ambiente demonstrativo</strong><span>Nenhum dado será transmitido ou armazenado.</span></div></div>
+          <div class="quote-form-card reveal reveal--delay">
+            <form id="quote-form" novalidate>
+              <div class="form-heading"><span>ORÇAMENTO</span><p>Campos marcados com * são obrigatórios.</p></div>
+              <div class="form-grid">
+                <label class="form-field"><span>Nome completo *</span><input name="nome" type="text" autocomplete="name" required minlength="3" placeholder="Como podemos chamar você?" /><small></small></label>
+                <label class="form-field"><span>Empresa</span><input name="empresa" type="text" autocomplete="organization" placeholder="Nome da sua empresa" /><small></small></label>
+                <label class="form-field"><span>Telefone *</span><input name="telefone" type="tel" autocomplete="tel" required placeholder="(00) 00000-0000" /><small></small></label>
+                <label class="form-field"><span>E-mail *</span><input name="email" type="email" autocomplete="email" required placeholder="voce@empresa.com.br" /><small></small></label>
+                <label class="form-field form-field--full"><span>Equipamento de interesse *</span><select name="equipamento" required><option value="">Selecione uma opção</option><option>Reforma de equipamento próprio</option><option>Masseira</option><option>Batedeira</option><option>Modeladora</option><option>Cilindro</option><option>Divisora</option><option>Outro equipamento</option></select><small></small></label>
+                <label class="form-field form-field--full"><span>Conte um pouco sobre sua necessidade *</span><textarea name="mensagem" rows="5" required minlength="15" placeholder="Descreva o equipamento, o problema ou o que você procura..."></textarea><small></small></label>
+              </div>
+              <label class="form-check"><input name="consentimento" type="checkbox" required /><span>Entendo que este formulário é apenas uma demonstração e não enviará meus dados.</span></label>
+              <button class="button button--primary button--full" type="submit">Simular envio do orçamento <span>→</span></button>
+            </form>
+            <div id="form-success" class="form-success" hidden><span>✓</span><h2>Simulação concluída!</h2><p>O formulário foi validado corretamente. Nenhuma informação foi enviada ou armazenada.</p><button class="button button--dark" id="new-request" type="button">Fazer nova simulação</button></div>
+          </div>
+        </div>
+      </section>
+    </main><div id="site-footer"></div>
+  </body>
+</html>
