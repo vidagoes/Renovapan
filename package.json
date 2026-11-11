@@ -1,12 +1,14 @@
 {
   "name": "renovapan",
   "version": "1.0.0",
+  "private": true,
   "description": "Protótipo funcional e responsivo feito apenas com HTML, CSS e JavaScript.",
   "main": "index.js",
   "scripts": {
     "start": "live-server --port=8080",
     "dev": "live-server --port=8080",
-    "server": "live-server --port=8080"
+    "server": "live-server --port=8080",
+    "release": "semantic-release"
   },
   "repository": {
     "type": "git",
@@ -21,8 +23,11 @@
   },
   "homepage": "https://github.com/vidagoes/Renovapan#readme",
   "devDependencies": {
+    "@semantic-release/changelog": "^7.0.0",
+    "@semantic-release/git": "^11.0.1",
     "cz-conventional-changelog": "^3.3.0",
-    "live-server": "^1.2.2"
+    "live-server": "^1.2.2",
+    "semantic-release": "^25.0.9"
   },
   "config": {
     "commitizen": {
