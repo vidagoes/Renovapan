@@ -1,0 +1,21 @@
+
+.print-catalog { background: white; color: #082344; }
+.print-header { display: flex; align-items: center; gap: 20px; padding: 16px 0; border-bottom: 3px solid #db1a22; margin-bottom: 14px; }
+.print-header h1 { margin: 0 0 8px; font-size: clamp(25px, 5vw, 40px); }
+.print-header p { margin: 0; }
+.print-products { display: grid; gap: 16px; }
+.print-product { break-inside: avoid; padding: 16px 0; border-bottom: 1px solid #bfc8d5; overflow-wrap: anywhere; }
+.print-product img { width: 170px; height: 130px; object-fit: contain; }
+.print-product figure { margin: 0; }
+.print-product figcaption { font-size: 12px; }
+.print-product h2 { font-size: 21px; margin-bottom: 8px; }
+.print-product p { margin-bottom: 6px; }
+.print-product ul { margin: 4px 0; }
+.print-product__row { display: flex; gap: 16px; flex-wrap: wrap; }
+.print-product__info { flex: 1 1 220px; min-width: 0; }
+@page { size: A4; margin: 15mm; }
+@media print {
+  .print-actions, #print-status { display: none !important; }
+  .print-catalog .container { width: 100%; max-width: none; }
+  .print-product { print-color-adjust: exact; }
+}

@@ -1,0 +1,103 @@
+
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Painel RENOVAPAN</title>
+  <link rel="icon" href="/assets/favicon-renovapan.png" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="stylesheet" href="/css/admin.css" />
+  <script src="/js/admin-operations.js" defer></script>
+  <script src="/js/admin.js" defer></script>
+</head>
+<body class="admin-body">
+  <header class="admin-header">
+    <div class="admin-shell">
+      <a href="/" aria-label="Ir ao site RENOVAPAN"><img src="/assets/logo-renovapan-2026.png" alt="RENOVAPAN" width="100" height="67" /></a>
+      <span>Painel administrativo</span>
+      <button type="button" id="logout" class="button button--outline" hidden>Sair</button>
+    </div>
+  </header>
+  <main class="admin-shell admin-main">
+    <p id="admin-status" class="admin-status" role="status">Verificando sessão…</p>
+    <form id="login" class="admin-card admin-login" hidden>
+      <h1>Entrar no painel</h1>
+      <label>Usuário <input name="username" autocomplete="username" maxlength="64" required /></label>
+      <label>Senha <input type="password" name="password" autocomplete="current-password" maxlength="256" required /></label>
+      <label>Código do autenticador <input name="otp" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" /><small>Preencha se o segundo fator estiver ativado.</small></label>
+      <button class="button button--primary" type="submit">Entrar</button>
+    </form>
+
+    <div id="workspace" hidden>
+      <nav class="admin-nav" aria-label="Painel">
+        <button type="button" data-tab="dashboard" aria-pressed="true">Visão geral</button>
+        <button type="button" data-tab="products" aria-pressed="false">Equipamentos</button>
+        <button type="button" data-tab="stock" aria-pressed="false">Máquinas e estoque</button>
+        <button type="button" data-tab="demands" aria-pressed="false">Máquinas procuradas</button>
+        <button type="button" data-tab="reports" aria-pressed="false">Exportações</button>
+        <button type="button" data-tab="history" aria-pressed="false">Histórico</button>
+      </nav>
+
+      <section id="dashboard" data-panel>
+        <div class="admin-heading"><h1>Visão geral</h1><label>Período <select id="period"><option value="7">7 dias</option><option value="30" selected>30 dias</option><option value="90">90 dias</option></select></label></div>
+        <div id="dashboard-data"></div>
+      </section>
+
+      <section id="products" data-panel hidden>
+        <div class="admin-heading"><h1>Equipamentos</h1><button id="add-product" type="button" class="button button--primary">Cadastrar equipamento</button></div>
+        <div class="admin-catalog">
+          <div class="admin-card admin-list">
+            <label>Buscar <input id="product-search" type="search" placeholder="Nome, marca ou categoria" /></label>
+            <div id="product-list"></div>
+          </div>
+          <div id="product-editor"></div>
+        </div>
+      </section>
+
+      <section id="stock" data-panel hidden>
+        <div class="admin-heading"><h1>Máquinas e estoque</h1><button id="add-unit" type="button" class="button button--primary">Cadastrar máquina</button></div>
+        <div id="legacy-stock"></div>
+        <div class="admin-catalog">
+          <div class="admin-card admin-list">
+            <label>Buscar máquina <input id="unit-search" type="search" placeholder="Código, nome ou cor" /></label>
+            <label>Situação <select id="unit-filter"><option value="">Todas</option><option value="free">Livre</option><option value="reserved">Reservada</option><option value="sold">Vendida</option><option value="archived">Arquivada</option><option value="waiting">Aguardando reforma</option><option value="repair">Em reforma</option><option value="testing">Em testes</option><option value="ready">Pronta</option></select></label>
+            <div id="unit-list"></div>
+          </div>
+          <div id="unit-editor"></div>
+        </div>
+      </section>
+      <section id="demands" data-panel hidden>
+        <div class="admin-heading"><h1>Máquinas procuradas</h1><button id="add-demand" type="button" class="button button--primary">Registrar procura</button></div>
+        <div class="admin-catalog">
+          <div class="admin-card admin-list"><label>Buscar procura <input id="demand-search" type="search" placeholder="Máquina, marca ou modelo" /></label><div id="demand-list"></div></div>
+          <div id="demand-editor"></div>
+        </div>
+      </section>
+      <section id="reports" data-panel hidden>
+        <h1>Exportações</h1>
+        <div class="admin-columns">
+          <section class="admin-card"><h2>Catálogo comercial</h2><p>Produtos publicados, fotos e disponibilidade para compartilhar.</p><a href="/catalogo-impressao.html" target="_blank" rel="noopener noreferrer" class="button button--primary">Abrir catálogo para PDF</a></section>
+          <form id="report-form" class="admin-card">
+            <h2>Relatórios privados em CSV</h2>
+            <label>Relatório <select name="type"><option value="inventory">Inventário e condições</option><option value="repairs">Reformas</option><option value="audit">Histórico de operações</option><option value="sales">Vendas</option><option value="finance">Custos e resultados</option><option value="demands">Máquinas procuradas</option><option value="interest">Interesse por equipamento</option></select></label>
+            <label>Produto <select name="product"></select></label>
+            <div class="admin-fields"><label>De <input type="date" name="from" /></label><label>Até <input type="date" name="to" /></label></div>
+            <button type="submit" class="button button--primary">Baixar CSV</button>
+          </form>
+        </div>
+      </section>
+      <section id="history" data-panel hidden>
+        <h1>Histórico de movimentações</h1>
+        <div id="history-data" class="admin-card"></div>
+        <div class="admin-pagination">
+          <button type="button" id="history-prev" class="button button--outline">Anterior</button>
+          <span id="history-page"></span>
+          <button type="button" id="history-next" class="button button--outline">Próxima</button>
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

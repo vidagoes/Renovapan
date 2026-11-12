@@ -2,21 +2,21 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Catálogo demonstrativo de máquinas industriais para panificação RENOVAPAN." />
+    <meta name="description" content="Catálogo de máquinas industriais para panificação RENOVAPAN." />
     <title>Catálogo | RENOVAPAN</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet" />
     <meta name="theme-color" content="#202B50" />
-    <link rel="icon" type="image/png" href="assets/logo-renovapan-oficial.png" />
+    <link rel="icon" type="image/png" href="assets/favicon-renovapan.png" />
     <link rel="stylesheet" href="css/styles.css" />
     <link rel="stylesheet" href="css/reference.css" />
-    <script src="js/data.js" defer></script><script src="js/components.js" defer></script><script src="js/catalogo.js" defer></script><script src="js/main.js" defer></script>
+    <script src="js/public-api.js" defer></script><script src="js/components.js" defer></script><script src="js/catalogo.js" defer></script><script src="js/main.js" defer></script>
   </head>
   <body data-page="catalogo">
     <a class="skip-link" href="#conteudo">Ir para o conteúdo</a><div id="site-header"></div>
     <main id="conteudo">
       <section class="page-hero page-hero--catalog">
-        <div class="container page-hero__grid"><div><span class="eyebrow"><span></span> Catálogo demonstrativo</span><h1>Máquinas para colocar sua produção em movimento.</h1></div><p>Explore os equipamentos, filtre por categoria e encontre uma solução compatível com a sua operação.</p></div>
+        <div class="container page-hero__grid"><div><span class="eyebrow"><span></span> Catálogo de equipamentos</span><h1>Máquinas para colocar sua produção em movimento.</h1></div><p>Explore os equipamentos, filtre por categoria e encontre uma solução compatível com a sua operação.</p></div>
       </section>
       <section class="catalog-section section">
         <div class="container">
@@ -24,7 +24,18 @@
             <label class="search-field"><span class="sr-only">Buscar equipamento</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg><input id="catalog-search" type="search" placeholder="Buscar por nome ou categoria..." autocomplete="off" /></label>
             <div id="category-filters" class="filter-chips" role="group" aria-label="Filtrar por categoria"></div>
           </div>
-          <div class="catalog-meta reveal"><p><strong id="result-count">0</strong> equipamentos encontrados</p><span>Dados e disponibilidade demonstrativos</span></div>
+          <details class="catalog-advanced">
+            <summary>Mais filtros</summary>
+            <div class="catalog-advanced__fields">
+              <label>Marca <select id="catalog-brand"><option value="">Todas</option></select></label>
+              <label>Modelo <select id="catalog-model"><option value="">Todos</option></select></label>
+              <label>Cor <select id="catalog-color"><option value="">Todas</option></select></label>
+              <label>Disponibilidade <select id="catalog-stock"><option value="">Todas</option><option value="ready">Pronta entrega</option><option value="pending">Sob encomenda</option><option value="out">Sem estoque</option></select></label>
+            </div>
+            <button type="button" id="reset-catalog" class="button button--outline">Limpar filtros</button>
+          </details>
+          <div class="catalog-meta reveal"><p><strong id="result-count">0</strong> equipamentos encontrados</p><span>Consulte valores e condições no WhatsApp</span></div>
+          <p id="catalog-status" role="status">Carregando equipamentos…</p>
           <div id="catalog-products" class="product-grid product-grid--catalog"></div>
           <div id="catalog-empty" class="empty-state" hidden><span>0</span><h2>Nenhum equipamento encontrado</h2><p>Tente outro termo ou selecione uma categoria diferente.</p><button class="button button--dark" type="button" id="clear-filters">Limpar filtros</button></div>
         </div>
