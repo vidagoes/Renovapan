@@ -25,7 +25,18 @@
             <p class="product-info__description">${product.details}</p>
             <div class="specs">${specs}</div>
             <div class="product-notice"><strong>Informação importante:</strong> este é um equipamento fictício do MVP. Capacidade, especificações, condição e disponibilidade deverão ser substituídas por dados reais validados.</div>
-            <a class="button button--primary button--full" href="orcamento.html?equipamento=${encodeURIComponent(product.name)}">Tenho interesse neste equipamento <span>→</span></a>
+            <div class="product-detail__actions">
+              <div class="qty-control" role="group" aria-label="Quantidade para adicionar ao carrinho">
+                <button type="button" id="detail-qty-decrease" aria-label="Diminuir quantidade">−</button>
+                <span id="detail-qty-value" aria-live="polite">1</span>
+                <button type="button" id="detail-qty-increase" aria-label="Aumentar quantidade">+</button>
+              </div>
+              <button class="button button--primary product-detail__add" id="detail-add-to-cart" type="button">Adicionar ao carrinho</button>
+            </div>
+            <div class="product-detail__secondary">
+              <button class="button button--outline" id="detail-open-cart" type="button" hidden>Finalizar carrinho no WhatsApp</button>
+              <a class="button button--outline" href="orcamento.html?equipamento=${encodeURIComponent(product.name)}">Solicitar orçamento por formulário <span>→</span></a>
+            </div>
           </div>
         </div>
         <div class="recovery-box reveal">
@@ -34,4 +45,53 @@
         </div>
       </div>
     </section>`;
+
+  const qtyValue = document.getElementById("detail-qty-value");
+  const decBtn = document.getElementById("detail-qty-decrease");
+  const incBtn = document.getElementById("detail-qty-increase");
+  const addBtn = document.getElementById("detail-add-to-cart");
+  const openCartBtn = document.getElementById("detail-open-cart");
+  let selectedQty = 1;
+
+  function syncDetailActions() {
+    qtyValue.textContent = String(selectedQty);
+    const cart = window.RenovapanCart;
+    if (!cart) return;
+    const inCartQty = cart.getItemQuantity(product.id);
+    addBtn.textContent = inCartQty > 0
+      ? `Adicionar ao carrinho (${inCartQty} no carrinho)`
+      : "Adicionar ao carrinho";
+    openCartBtn.hidden = cart.getTotalCount() === 0;
+  }
+
+  decBtn.addEventListener("click", () => {
+    if (selectedQty > 1) {
+      selectedQty -= 1;
+      syncDetailActions();
+    }
+  });
+
+  incBtn.addEventListener("click", () => {
+    if (selectedQty < 99) {
+      selectedQty += 1;
+      syncDetailActions();
+    }
+  });
+
+  addBtn.addEventListener("click", () => {
+    const cart = window.RenovapanCart;
+    if (!cart) return;
+    if (cart.addItem(product.id, selectedQty)) {
+      window.RenovapanUI?.showToast(`${selectedQty}x ${product.shortName || product.name} adicionado ao carrinho`);
+      selectedQty = 1;
+      syncDetailActions();
+    }
+  });
+
+  openCartBtn.addEventListener("click", () => {
+    window.RenovapanUI?.openCart(openCartBtn);
+  });
+
+  window.RenovapanCart?.subscribe(syncDetailActions);
+  syncDetailActions();
 })();

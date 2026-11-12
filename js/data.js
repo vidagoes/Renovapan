@@ -1,4 +1,5 @@
 window.RENOVAPAN_DATA = {
+  whatsappNumber: "5511952031535",
   categories: ["Todos", "Masseiras", "Batedeiras", "Modeladoras", "Cilindros", "Divisoras"],
   products: [
     {
