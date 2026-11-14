@@ -30,7 +30,7 @@ export function privateReport(db, parameters) {
       + "(SELECT COUNT(*) FROM unit_expenses e WHERE e.unit_id=u.id AND e.category='acquisition' AND e.reversed_at IS NULL) AS acquisitions, "
       + "(SELECT amount_cents FROM deals d WHERE d.unit_id=u.id AND d.status='sold') AS revenue "
       + "FROM units u JOIN variants v ON v.id=u.variant_id JOIN products p ON p.id=v.product_id "
-      + "WHERE (? IS NULL OR p.id=?) AND substr(u.updated_at,1,10) BETWEEN ? AND ? ORDER BY p.name,u.code"
+      + "WHERE (? IS NULL OR p.id=?) AND business_day(u.updated_at) BETWEEN ? AND ? ORDER BY p.name,u.code"
     ).all(product, product, from, to);
     columns = ["Código", "Equipamento", "Marca", "Modelo", "Cor", "Etapa", "Situação", "Aquisição", "Última atualização"];
     if (type === "finance") columns.push("Custos registrados (R$)", "Receita (R$)", "Resultado bruto estimado (R$)", "Margem estimada (%)", "Custo de aquisição registrado");
@@ -72,7 +72,7 @@ export function privateReport(db, parameters) {
       + "LEFT JOIN variants v ON v.id=COALESCE(u.variant_id,l.variant_id,CASE WHEN e.entity IN ('variant','legacy') THEN e.entity_id END) "
       + "LEFT JOIN demands d ON e.entity='demand' AND d.id=e.entity_id "
       + "WHERE (? IS NULL OR COALESCE(v.product_id,d.product_id,CASE WHEN e.entity='product' THEN e.entity_id END)=?) "
-      + "AND substr(e.happened_at,1,10) BETWEEN ? AND ? AND (?=0 OR e.operation IN ('stage','restore')) ORDER BY e.happened_at DESC"
+      + "AND business_day(e.happened_at) BETWEEN ? AND ? AND (?=0 OR e.operation IN ('stage','restore')) ORDER BY e.happened_at DESC"
     ).all(product, product, from, to, Number(type === "repairs"))
       .map(e => [e.happened_at, e.actor, e.entity, e.entity_id, e.operation, e.reason, e.before_json, e.after_json]);
   } else {

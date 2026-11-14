@@ -61,12 +61,14 @@
 
   let menuButton = null;
   let nav = null;
+  const mobileMenu = window.matchMedia?.("(max-width: 820px)");
 
   function setMenuOpen(open) {
     if (!menuButton || !nav) return;
     menuButton.setAttribute("aria-expanded", String(open));
     menuButton.setAttribute("aria-label", open ? "Fechar menu" : "Abrir menu");
     nav.classList.toggle("is-open", open);
+    nav.inert = Boolean(mobileMenu?.matches && !open);
     document.body.classList.toggle("menu-open", open);
   }
 
@@ -94,9 +96,18 @@
 
     menuButton = header.querySelector(".menu-button");
     nav = header.querySelector(".main-nav");
+    setMenuOpen(false);
+    mobileMenu?.addEventListener("change", () => setMenuOpen(false));
     menuButton.addEventListener("click", () => {
       const open = menuButton.getAttribute("aria-expanded") === "true";
       setMenuOpen(!open);
+      if (!open) nav.querySelector("a")?.focus();
+    });
+    nav.addEventListener("click", event => {
+      if (mobileMenu?.matches && event.target.closest("a")) {
+        menuButton.focus();
+        setMenuOpen(false);
+      }
     });
   }
 
@@ -382,6 +393,25 @@
   toastOpen.addEventListener("click", () => openCart(toggleBtn));
 
   document.addEventListener("keydown", (event) => {
+    if (nav?.classList.contains("is-open")) {
+      if (event.key === "Escape") {
+        menuButton.focus();
+        setMenuOpen(false);
+      }
+      if (event.key === "Tab") {
+        const links = [...nav.querySelectorAll("a")];
+        const first = links[0];
+        const last = links.at(-1);
+        if (document.activeElement === menuButton) {
+          event.preventDefault();
+          (event.shiftKey ? last : first).focus();
+        } else if (document.activeElement === (event.shiftKey ? first : last)) {
+          event.preventDefault();
+          menuButton.focus();
+        }
+      }
+      return;
+    }
     if (!drawer.classList.contains("is-open")) return;
     if (event.key === "Escape") closeCart();
     if (event.key !== "Tab") return;
@@ -433,6 +463,7 @@
 
   clearBtn.addEventListener("click", () => {
     cart?.clear();
+    if (!cart?.getTotalCount()) closeBtn.focus();
   });
 
   function quoteStatus(message) {
@@ -453,7 +484,7 @@
         window.location.assign(result.url);
       }
     } catch {
-      quoteStatus("Não foi possível atualizar a disponibilidade. Tente novamente antes de abrir o WhatsApp.");
+      quoteStatus("Não foi possível atualizar a disponibilidade. Confira a conexão e tente novamente.");
     } finally {
       whatsappLink.disabled = false;
     }

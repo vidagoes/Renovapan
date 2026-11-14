@@ -1,6 +1,7 @@
 import { RequestError } from "./inventory.mts";
 
-export const businessDay = (date = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(date);
+const businessDateFormat = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" });
+export const businessDay = (date = new Date()) => businessDateFormat.format(date);
 
 export function dateOf(value) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {

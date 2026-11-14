@@ -7,7 +7,12 @@
   try { choice = localStorage.getItem("renovapan-measurement"); } catch {}
 
   async function get(url, options) {
-    const response = await fetch(url, options);
+    let response;
+    try {
+      response = await fetch(url, { signal: AbortSignal.timeout(15000), ...options });
+    } catch {
+      throw new Error("Não foi possível carregar o catálogo. Confira a conexão e tente novamente.");
+    }
     if (!response.ok) {
       const error = new Error("Não foi possível carregar o catálogo. Tente novamente.");
       error.status = response.status;

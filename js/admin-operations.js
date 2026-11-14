@@ -35,9 +35,20 @@ window.RenovapanOperations = function ({ request, run, status, escape, option, m
   }
 
   function submit(form, action) {
+    const feedback = document.createElement("p");
+    feedback.className = "admin-save-feedback";
+    feedback.setAttribute("role", "status");
+    form.append(feedback);
+    const report = (message, error = false) => {
+      feedback.textContent = message;
+      feedback.dataset.error = String(error);
+    };
     form.addEventListener("submit", event => {
       event.preventDefault();
-      run(form.querySelector('button[type="submit"]'), action);
+      run(form.querySelector('button[type="submit"]'), async () => {
+        await action();
+        report("");
+      }, report);
     });
   }
 

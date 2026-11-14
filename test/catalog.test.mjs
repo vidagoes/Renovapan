@@ -107,6 +107,11 @@ test("API com banco persistente: catálogo, estoque, segurança e indicadores", 
   ];
   for (const response of unauthorized) assert.equal(response.status, 401);
   assert.equal((await api("/.renovapan/catalog.sqlite")).status, 404);
+  const notFound = await api("/pagina-inexistente", { extra: { Accept: "text/html" } });
+  assert.equal(notFound.status, 404);
+  assert.match(notFound.headers["content-type"], /^text\/html/);
+  assert.match(notFound.bytes.toString(), /Página não encontrada.*href="\/"/);
+  assert.equal((await api("/api/inexistente", { extra: { Accept: "text/html" } })).status, 404);
   const loginAsOwner = otp => api("/api/admin/login", { method: "POST", data: { username: "teste", password, otp } });
   const login = await loginAsOwner();
   assert.equal(login.status, 200);
@@ -195,6 +200,7 @@ test("API com banco persistente: catálogo, estoque, segurança e indicadores", 
   assert.equal((await write("products/" + id, sample, "PUT")).status, 200);
 
   await checkProductScreen(product, red, grey);
+  await checkProductScreen(product, red, grey, false, "Cinza");
   await checkProductScreen({ ...product, variants: product.variants.map(v => ({ ...v, ready: 0, pending: 0 })), stock: { ready: 0, pending: 0 } }, red, grey, true);
 
   const before = (await get(id)).data.product.stock;
@@ -301,6 +307,9 @@ test("API com banco persistente: catálogo, estoque, segurança e indicadores", 
   assert.equal((await get(id)).status, 404);
   assert.equal((await api("/media/" + photo)).status, 404);
   assert.equal((await api("/api/catalog")).data.products.length, 1);
+  assert.equal((await write("products/" + id, { ...sample, visibility: "archived" }, "PUT")).status, 200);
+  assert.equal((await get(id)).status, 404);
+  assert.equal((await api("/api/catalog")).data.products[0].id, zero.data.id);
 
   const reopened = openDatabase(file);
   assert.equal(reopened.prepare("SELECT COUNT(*) AS count FROM products").get().count, 4);
@@ -311,9 +320,15 @@ test("API com banco persistente: catálogo, estoque, segurança e indicadores", 
   assert.equal(logout.status, 204);
   assert.match(logout.headers["set-cookie"][0], /Max-Age=0/);
   assert.equal((await api("/api/admin/session", { session: true })).status, 401);
+  time += 30000;
+  const expiring = await loginAsOwner(otpFor(secret, Math.floor(time / 30000)));
+  assert.equal(expiring.status, 200);
+  cookie = expiring.headers["set-cookie"][0].split(";")[0];
+  time += 8 * 60 * 60 * 1000 + 1;
+  assert.equal((await api("/api/admin/report?type=finance", { session: true })).status, 401);
 });
 
-async function checkProductScreen(product, red, grey, zero = false) {
+async function checkProductScreen(product, red, grey, zero = false, linkedColor = "") {
   const handlers = {};
   const root = {
     innerHTML: "", addEventListener: (name, fn) => { handlers[name] = fn; },
@@ -327,7 +342,7 @@ async function checkProductScreen(product, red, grey, zero = false) {
   const colorQuote = { dataset: { quoteVariant: grey } };
   const window = { RenovapanAPI: { get: async () => ({ product }), track() {} } };
   const context = {
-    window, URLSearchParams, location: { search: "?id=" + product.id },
+    window, URLSearchParams, location: { search: "?id=" + product.id + "&cor=" + encodeURIComponent(linkedColor) },
     document: { body: { dataset: {} }, getElementById: id => ({
       "product-detail": root, "product-stock": stock, "product-photos": photos,
       "detail-qty-value": qty, "detail-qty-notice": notice, "product-whatsapp": direct
@@ -339,7 +354,11 @@ async function checkProductScreen(product, red, grey, zero = false) {
   assert(stock.innerHTML.includes("Cinza · Esgotada"));
   assert.match(decodeURIComponent(stock.innerHTML), /Cor de interesse: Cinza/);
   assert.match(stock.innerHTML, /Consultar esta cor/);
-  if (zero) {
+  if (linkedColor) {
+    assert.match(stock.innerHTML, /A cor Cinza está esgotada/);
+    assert.match(new URL(direct.href).searchParams.get("text"), /Cor de interesse: Cinza.*cor esgotada/);
+    assert.doesNotMatch(new URL(direct.href).searchParams.get("text"), /Cor de interesse: Branca/);
+  } else if (zero) {
     assert.match(stock.innerHTML, /Total do equipamento: <strong>0 unidades livres/);
     assert.match(stock.innerHTML, /Sem estoque|Consultar possibilidade de encomenda/);
     assert.match(decodeURIComponent(stock.innerHTML), /Situação: sem estoque/);

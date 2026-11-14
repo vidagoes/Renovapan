@@ -24,14 +24,15 @@
   window.RenovapanAPI.track("view", product.id);
   const available = variant => (variant.ready || 0) + (variant.pending || 0) > 0;
   const requestedColor = new URLSearchParams(location.search).get("cor");
-  let selected = product.variants.find(v => v.color === requestedColor && available(v)) || product.variants.find(available) || null;
+  const linkedColor = product.variants.find(v => v.color === requestedColor);
+  let selected = linkedColor ? (available(linkedColor) ? linkedColor : null) : product.variants.find(available) || null;
   let condition = selected?.ready ? "ready" : "pending";
   let activeImage = 0;
   let selectedQty = 1;
 
   function quoteSelection() {
     return selected ? { variantId: selected.id, color: selected.color, condition }
-      : { condition: "future" };
+      : { variantId: linkedColor?.id, color: linkedColor?.color, condition: "future" };
   }
 
   function whatsapp(variant, state) {
@@ -68,10 +69,11 @@
     + '<div><span>03</span><strong>Estrutural</strong></div><div><span>04</span><strong>Estética</strong></div></div></div></div></section>';
 
   function showPhotos() {
-    const photos = [...new Set([...(selected?.images || []), ...product.images])];
+    const color = selected || linkedColor;
+    const photos = [...new Set([...(color?.images || []), ...product.images])];
     const current = photos[activeImage];
-    const caption = { before: "Antes da reforma", after: "Depois da reforma", reference: "Foto de referência de reforma anterior" }[selected?.photoKinds?.[current]];
-    const alt = escape(product.name + (selected?.images.includes(current) ? " na cor " + selected.color : ""));
+    const caption = { before: "Antes da reforma", after: "Depois da reforma", reference: "Foto de referência de reforma anterior" }[color?.photoKinds?.[current]];
+    const alt = escape(product.name + (color?.images.includes(current) ? " na cor " + color.color : ""));
     document.getElementById("product-photos").innerHTML = '<div class="product-gallery__main">'
       + (current ? '<img class="catalog-actual-image" src="' + mediaPath(current) + '" alt="' + alt + '" />' : '<p>Fotos sob consulta</p>')
       + '</div>' + (caption ? '<p class="product-gallery__caption">' + caption + '</p>' : '') + (photos.length > 1 ? '<div class="catalog-thumbs" aria-label="Fotos do equipamento">' + photos.map((photo, index) =>
@@ -94,7 +96,9 @@
     const stateOptions = states.length > 1 ? '<label class="catalog-condition">Condição de interesse <select id="catalog-condition">'
       + states.map(key => '<option value="' + key + '"' + (condition === key ? ' selected' : '') + '>' + labels[key] + '</option>').join("")
       + '</select></label>' : '';
-    const outMessage = selected ? '' : '<p class="product-notice">Não temos unidades disponíveis no momento. Consulte a possibilidade de conseguirmos este equipamento para reforma e venda.</p>';
+    const outMessage = selected ? '' : '<p class="product-notice">' + (linkedColor && product.stock.ready + product.stock.pending
+      ? 'A cor ' + escape(linkedColor.color) + ' está esgotada. Consulte a disponibilidade futura ou selecione outra cor.'
+      : 'Não temos unidades disponíveis no momento. Consulte a possibilidade de conseguirmos este equipamento para reforma e venda.') + '</p>';
     const cta = selected ? "Ver valores no WhatsApp" : "Consultar possibilidade de encomenda";
 
     const inCartQty = cart?.getItemQuantity(product.id, quoteSelection()) || 0;
@@ -107,8 +111,8 @@
     document.getElementById("product-stock").innerHTML = '<p class="catalog-stock-total">Total do equipamento: <strong>'
       + total + (total === 1 ? ' unidade livre' : ' unidades livres') + '</strong></p>'
       + (colors ? '<h2 class="catalog-colors-title">Disponibilidade por cor</h2><div class="catalog-colors">' + colors + '</div>' : '')
-      + '<div class="catalog-availability" aria-live="polite" aria-label="' + (selected ? 'Disponibilidade na cor ' + escape(selected.color) : 'Disponibilidade do equipamento') + '">'
-      + stockLabels(selected || product.stock) + '</div>'
+      + '<div class="catalog-availability" aria-live="polite" aria-label="' + (selected || linkedColor ? 'Disponibilidade na cor ' + escape((selected || linkedColor).color) : 'Disponibilidade do equipamento') + '">'
+      + stockLabels(selected || linkedColor || product.stock) + '</div>'
       + stateOptions + outMessage
       + '<div class="product-detail__actions">'
       +   '<div class="qty-control" role="group" aria-label="Quantidade desejada para a lista">'
@@ -122,7 +126,7 @@
       + '<div class="product-detail__secondary">'
       +   '<button class="button button--outline" id="detail-open-cart" type="button"' + (totalCart > 0 ? '' : ' hidden') + '>Ver lista de orçamento (' + totalCart + ')</button>'
       +   '<a id="product-whatsapp" class="button button--outline button--full" target="_blank" rel="noopener noreferrer" data-product-id="'
-      +   escape(product.id) + '" href="' + whatsapp(selected, selected ? condition : "out") + '">' + cta + ' ↗</a>'
+      +   escape(product.id) + '" href="' + whatsapp(selected || linkedColor, selected ? condition : "out") + '">' + cta + ' ↗</a>'
       + '</div>';
     showQuantity();
   }
@@ -135,7 +139,7 @@
     document.getElementById("detail-qty-notice").textContent = !excess ? "" : excess === 1
       ? "1 unidade acima do saldo depende de confirmação comercial."
       : excess + " unidades acima do saldo dependem de confirmação comercial.";
-    document.getElementById("product-whatsapp").href = whatsapp(selected, selected ? condition : "out");
+    document.getElementById("product-whatsapp").href = whatsapp(selected || linkedColor, selected ? condition : "out");
     for (const link of root.querySelectorAll("[data-quote-variant]")) {
       link.href = whatsapp(product.variants.find(variant => variant.id === link.dataset.quoteVariant), "out");
     }
@@ -175,7 +179,7 @@
       }
     }
     if (addBtn && cart) {
-      const colorName = selected?.color || "";
+      const colorName = (selected || linkedColor)?.color || "";
       if (cart.addItem(product, selectedQty, quoteSelection())) {
         window.RenovapanUI?.showToast(`${selectedQty}x ${product.name}${colorName ? ' (' + colorName + ')' : ''} adicionado à lista`);
         selectedQty = 1;

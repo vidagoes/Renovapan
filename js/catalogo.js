@@ -26,8 +26,12 @@
     options(model, products.map(p => p.model));
     options(color, products.flatMap(p => p.variants.map(v => v.color)));
     const categories = ["Todos", ...new Set(products.map(product => product.category).sort((a, b) => a.localeCompare(b, "pt-BR")))];
-    const linkedCategory = categories.find(category => normalize(category) === normalize(queryCategory || ""));
-    if (linkedCategory) selectedCategory = linkedCategory;
+    const requestedCategory = queryCategory?.trim().slice(0, 80);
+    if (requestedCategory) {
+      const linkedCategory = categories.find(category => normalize(category) === normalize(requestedCategory));
+      selectedCategory = linkedCategory || requestedCategory;
+      if (!linkedCategory) categories.push(requestedCategory);
+    }
     for (const category of categories) {
       const button = document.createElement("button");
       button.type = "button";

@@ -33,7 +33,8 @@ test("login local de oito caracteres protege o painel sem exigir TOTP", async ()
   try {
     await once(listener, "listening");
     const origin = "http://127.0.0.1:" + listener.address().port;
-    listener.on("request", createApp(db, { origin, prototype: true }).listeners("request")[0]);
+    const handler = () => createApp(db, { origin, prototype: true }).listeners("request")[0];
+    listener.on("request", handler());
     const api = (path, { data, cookie, extra } = {}) => fetch(origin + path, {
       method: data ? "POST" : "GET",
       headers: { Origin: origin, "Content-Type": "application/json", ...(cookie && { Cookie: cookie }), ...extra },
@@ -42,6 +43,7 @@ test("login local de oito caracteres protege o painel sem exigir TOTP", async ()
     assert.match(await (await api("/admin")).text(), /data-prototype="true"/);
     assert.equal((await api("/api/admin/products")).status, 401);
     assert.equal((await api("/api/admin/login", { data: { ...credentials, password: "errada" } })).status, 401);
+    assert.equal((await api("/api/admin/login", { data: { ...credentials, username: "inexistente" } })).status, 401);
     assert.equal((await api("/admin", { extra: { "X-Forwarded-Host": "example.test" } })).status, 403);
     const login = await api("/api/admin/login", { data: credentials });
     assert.equal(login.status, 200);
@@ -51,7 +53,11 @@ test("login local de oito caracteres protege o painel sem exigir TOTP", async ()
     const token = cookie.slice("renovapan_prototipo=".length);
     assert.equal(sessionOwner(db, token), null);
     assert.equal((await api("/api/admin/dashboard", { cookie })).status, 200);
+    assert.equal((await api("/api/admin/products", { cookie, data: {}, extra: { Origin: "https://example.test" } })).status, 403);
     assert.equal((await api("/api/admin/totp/begin", { data: credentials, cookie })).status, 404);
+    listener.removeAllListeners("request");
+    listener.on("request", handler());
+    assert.equal((await api("/api/admin/session", { cookie })).status, 200);
     assert.equal((await api("/api/admin/logout", { data: {}, cookie })).status, 204);
     assert.equal((await api("/api/admin/products", { cookie })).status, 401);
   } finally {

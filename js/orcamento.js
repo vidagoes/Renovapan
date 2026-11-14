@@ -20,11 +20,13 @@
   function validateField(field) {
     const wrapper = field.closest(".form-field") || field.closest(".form-check");
     let message = "";
-    if (field.validity.valueMissing) message = field.type === "checkbox" ? "Confirme para continuar." : "Este campo é obrigatório.";
+    if (field.validity.valueMissing || (field.required && !field.value.trim())) message = field.type === "checkbox" ? "Confirme para continuar." : "Este campo é obrigatório.";
     else if (field.validity.typeMismatch) message = "Informe um e-mail válido.";
-    else if (field.validity.tooShort) message = `Digite pelo menos ${field.minLength} caracteres.`;
+    else if (field.minLength > 0 && field.value.trim().length < field.minLength) message = `Digite pelo menos ${field.minLength} caracteres.`;
     else if (field.name === "telefone" && field.value.replace(/\D/g, "").length < 10) message = "Informe um telefone com DDD.";
     wrapper.classList.toggle("is-error", Boolean(message));
+    if (message) field.setAttribute("aria-invalid", "true");
+    else field.removeAttribute("aria-invalid");
     const small = wrapper.querySelector("small");
     if (small) small.textContent = message;
     return !message;
@@ -45,7 +47,7 @@
     }
     form.hidden = true;
     success.hidden = false;
-    success.querySelector("h2").focus?.();
+    success.querySelector("h2").focus();
   });
 
   newRequest.addEventListener("click", () => {
@@ -53,6 +55,8 @@
     form.hidden = false;
     success.hidden = true;
     form.querySelectorAll(".is-error").forEach((item) => item.classList.remove("is-error"));
+    form.querySelectorAll("[aria-invalid]").forEach(field => field.removeAttribute("aria-invalid"));
+    form.querySelectorAll("small").forEach(message => { message.textContent = ""; });
     form.elements.nome.focus();
   });
 })();

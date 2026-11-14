@@ -3,12 +3,14 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { encryptTotp, totpKey } from "./totp.mjs";
+import { businessDay } from "./stock.mjs";
 
 const migrations = ["001-initial.sql", "002-units.sql", "003-quote-and-totp.sql"];
 
 export function openDatabase(filename = process.env.RENOVAPAN_DB || ".renovapan/catalogo.sqlite") {
   if (filename !== ":memory:") mkdirSync(dirname(resolve(filename)), { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(filename);
+  db.function("business_day", { deterministic: true }, timestamp => businessDay(new Date(timestamp)));
   db.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL; PRAGMA secure_delete = ON;");
   try {
     transaction(db, () => {

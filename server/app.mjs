@@ -254,6 +254,12 @@ export function createApp(db, { origin, totpEncryptionKey = totpKey(), prototype
       await staticFile(pathname, request, response, prototype);
     } catch (error) {
       if (response.headersSent || response.destroyed) return;
+      if (error instanceof RequestError && error.status === 404 && request.method === "GET"
+        && request.headers.accept?.includes("text/html")
+        && !/^\/(?:api|assets|css|js|media)(?:\/|\?|$)/.test(request.url)) {
+        response.writeHead(404, { "Content-Type": "text/html; charset=utf-8" });
+        return response.end('<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Página não encontrada | RENOVAPAN</title><link rel="stylesheet" href="/css/styles.css"><main class="not-found"><div><h1>Página não encontrada</h1><a class="button button--dark" href="/">Voltar ao início</a></div></main></html>');
+      }
       if (error instanceof RequestError) return json(response, error.status, { error: error.message });
       if (error instanceof URIError) return json(response, 400, { error: "Endereço inválido." });
       if (error.errcode === 5) return json(response, 503, { error: "Banco ocupado. Tente novamente." });

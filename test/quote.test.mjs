@@ -31,14 +31,37 @@ function prepare(saved = []) {
     }
   };
   runInNewContext(script, { window });
-  return { cart: window.RenovapanCart, requests, serve: products => { result = products; } };
+  return { cart: window.RenovapanCart, requests, serve: products => { result = products; },
+    savedItems: () => JSON.parse(window.localStorage.getItem("renovapan_cart_v1")) };
 }
 
 function message(quote) {
   const url = new URL(quote.url);
   assert.equal(url.origin, "https://wa.me");
+  assert.equal(url.pathname, "/5511952031535");
   return url.searchParams.get("text");
 }
+
+test("lista conserva itens ao recarregar, remove por cor e limpa todos", async () => {
+  const original = prepare();
+  const renamed = { ...mixer, name: "Masseira Açúcar & Pão" };
+  original.cart.addItem(renamed, 3, { variantId: "white", condition: "ready" });
+  original.cart.addItem(renamed, 2, { variantId: "blue", condition: "pending" });
+  original.cart.addItem(soldOut);
+  const reloaded = prepare(original.savedItems());
+  reloaded.serve([renamed, soldOut]);
+  const lines = reloaded.cart.getItems();
+  assert.equal(lines.length, 3);
+  reloaded.cart.setQuantity(lines.find(item => item.product.color === "Branca").key, 0);
+  const text = message(await reloaded.cart.prepareQuote());
+  assert.match(text, /Masseira Açúcar & Pão/);
+  assert.match(text, /Cor: Azul.*Quantidade desejada: 2/);
+  assert.doesNotMatch(text, /Cor: Branca/);
+  assert.match(text, /Divisora/);
+  reloaded.cart.clear();
+  assert.deepEqual(reloaded.savedItems(), []);
+  assert.equal((await reloaded.cart.prepareQuote()).url, undefined);
+});
 
 test("lista mantém linhas por cor e condição, com excedente separado da disponibilidade", async () => {
   const { cart, requests } = prepare();
