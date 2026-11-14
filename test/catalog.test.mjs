@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { once } from "node:events";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { mkdtempSync, readFileSync, rmdirSync, unlinkSync } from "node:fs";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { runInNewContext } from "node:vm";
 import { createApp } from "../server/app.mjs";
-import { authenticate, setOwner } from "../server/auth.mjs";
+import { authenticate, sessionOwner, setOwner } from "../server/auth.mjs";
 import { openDatabase } from "../server/db.mjs";
 import { businessDay } from "../server/stock.mjs";
 
@@ -21,6 +21,24 @@ const sample = {
   priceCents: 987650, showPrice: false, featured: true, visibility: "published"
 };
 const date = businessDay();
+
+function otpFor(secret, step) {
+  let buffer = 0;
+  let bits = 0;
+  const bytes = [];
+  for (const letter of secret) {
+    buffer = (buffer << 5) | "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".indexOf(letter);
+    bits += 5;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes.push((buffer >> bits) & 255);
+    }
+  }
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(step));
+  const mac = createHmac("sha1", Buffer.from(bytes)).update(counter).digest();
+  return ((mac.readUInt32BE(mac.at(-1) & 15) & 0x7fffffff) % 1000000).toString().padStart(6, "0");
+}
 
 test("API com banco persistente: catálogo, estoque, segurança e indicadores", async t => {
   const folder = mkdtempSync(join(tmpdir(), "renovapan-test-"));
@@ -35,7 +53,9 @@ test("API com banco persistente: catálogo, estoque, segurança e indicadores", 
   });
   const password = randomUUID();
   setOwner(db, "teste", password);
-  const app = createApp(db, { origin: "http://localhost" });
+  let time = Date.now();
+  t.mock.method(Date, "now", () => time);
+  const app = createApp(db, { origin: "http://localhost", totpEncryptionKey: randomBytes(32) });
   app.listen(0, "127.0.0.1");
   await once(app, "listening");
   t.after(() => new Promise(resolve => app.close(resolve)));
@@ -81,16 +101,52 @@ test("API com banco persistente: catálogo, estoque, segurança e indicadores", 
     await api("/api/admin/report?type=finance"),
     await api("/api/admin/products", { method: "POST", data: sample }),
     await api("/api/admin/movements", { method: "POST", data: {} }),
+    await api("/api/admin/totp/begin", { method: "POST", data: { password } }),
+    await api("/api/admin/totp/confirm", { method: "POST", data: { otp: "123456" } }),
     await api("/api/admin/media", { method: "POST", raw: "x", type: "image/png" })
   ];
   for (const response of unauthorized) assert.equal(response.status, 401);
   assert.equal((await api("/.renovapan/catalog.sqlite")).status, 404);
-  const login = await api("/api/admin/login", { method: "POST", data: { username: "teste", password } });
+  const loginAsOwner = otp => api("/api/admin/login", { method: "POST", data: { username: "teste", password, otp } });
+  const login = await loginAsOwner();
   assert.equal(login.status, 200);
   const header = login.headers["set-cookie"][0];
   assert.match(header, /HttpOnly/);
   assert.match(header, /SameSite=Strict/);
   cookie = header.split(";")[0];
+  assert.equal((await api("/api/admin/session", { session: true })).data.totpEnabled, false);
+  assert.equal((await api("/api/admin/products", { session: true })).status, 403);
+  assert.equal((await write("products", sample)).status, 403);
+  assert.equal((await write("totp/begin", { password: "errada" })).status, 400);
+  const pending = await write("totp/begin", { password });
+  assert.equal(pending.status, 200);
+  assert.equal(pending.headers["cache-control"], "no-store");
+  const { secret } = pending.data;
+  assert.match(secret, /^[A-Z2-7]{32}$/);
+  const encrypted = db.prepare("SELECT encrypted_secret FROM totp_enrollment").get().encrypted_secret;
+  assert.match(encrypted, /^v1:/);
+  assert.ok(!encrypted.includes(secret));
+  const step = Math.floor(time / 30000);
+  const codes = [step - 1, step, step + 1, step + 2].map(counter => otpFor(secret, counter));
+  const invalid = ["000000", "000001", "000002", "000003", "000004"].find(code => !codes.includes(code));
+  assert.equal((await write("totp/confirm", { otp: invalid })).status, 400);
+  const confirmed = await write("totp/confirm", { otp: codes[1] });
+  assert.equal(confirmed.status, 200);
+  assert.equal((await api("/api/admin/session", { session: true })).status, 401);
+  cookie = confirmed.headers["set-cookie"][0].split(";")[0];
+  assert.deepEqual((await api("/api/admin/session", { session: true })).data, { username: "teste", totpEnabled: true, totpAvailable: true });
+  assert.equal(db.prepare("SELECT totp_secret FROM owner").get().totp_secret, encrypted);
+  assert.equal(db.prepare("SELECT COUNT(*) AS total FROM totp_enrollment").get().total, 0);
+  assert.equal((await loginAsOwner()).status, 401);
+  assert.equal((await loginAsOwner(invalid)).status, 401);
+  assert.equal((await loginAsOwner(codes[1])).status, 401);
+  time += 30000;
+  const verified = await loginAsOwner(codes[2]);
+  assert.equal(verified.status, 200);
+  const freshStep = db.prepare("SELECT last_totp FROM owner").get().last_totp;
+  assert.ok(freshStep > step);
+  assert.equal((await loginAsOwner(codes[2])).status, 401);
+  cookie = verified.headers["set-cookie"][0].split(";")[0];
   assert.equal((await api("/api/admin/products", { method: "POST", data: sample, session: true, origin: "https://elsewhere.example" })).status, 403);
   assert.equal((await api("/api/admin/products", { method: "POST", data: sample, session: true, origin: "" })).status, 403);
 
@@ -186,16 +242,22 @@ test("API com banco persistente: catálogo, estoque, segurança e indicadores", 
   const stockBeforeClick = (await get(id)).data.product.stock;
   for (const data of [
     { event: "visit" }, { event: "whatsapp", productId: id }, { event: "whatsapp", productId: zero.data.id },
-    { event: "view", productId: id }, { event: "view" }
+    { event: "view", productId: id }, { event: "view" }, { event: "quote", productCount: 2 },
+    { event: "quote", productCount: 1 }, { event: "quote", productCount: -1 }
   ]) await api("/api/analytics", { method: "POST", data: { ...data, consent: true } });
   await api("/api/analytics", { method: "POST", data: { event: "view", productId: id } });
   await api("/api/analytics", { method: "POST", data: { event: "view", productId: id, consent: true }, extra: { "Sec-GPC": "1" } });
+  await api("/api/analytics", { method: "POST", data: { event: "quote", productCount: 4 } });
+  await api("/api/analytics", { method: "POST", data: { event: "quote", productCount: 4, consent: true }, extra: { DNT: "1" } });
   assert.deepEqual((await get(id)).data.product.stock, stockBeforeClick);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM deals").get().count, 4);
   for (const days of [7, 30, 90]) {
     const summary = (await api("/api/admin/dashboard?days=" + days, { session: true })).data;
     assert.equal(summary.series.length, days);
-    assert.deepEqual(summary.totals, { visits: 1, views: 2, clicks: 2, sales: 2, amountCents: 1000000, costsCents: 350000, demands: 1 });
+    assert.deepEqual(summary.totals, {
+      visits: 1, views: 2, clicks: 2, productClicks: 2, quoteClicks: 2, quoteProducts: 3,
+      sales: 2, amountCents: 1000000, costsCents: 350000, demands: 1
+    });
     assert.equal(summary.financial.gross, 650000);
     assert.equal(summary.financial.incomplete, 1);
     assert.equal(summary.soldOut, 1);
@@ -269,12 +331,23 @@ async function checkProductScreen(product, red, grey, zero = false) {
 test("autenticação do proprietário valida usuário e senha e revoga sessões anteriores", () => {
   const db = openDatabase(":memory:");
   const password = randomUUID();
+  for (const weak of ["abcd", "aaaaaaaaaaaaaa", "Password-Strong-looking-1"]) {
+    assert.throws(() => setOwner(db, "teste", weak), /senha forte de 14/);
+  }
   setOwner(db, "teste", password);
   assert.equal(authenticate(db, "teste", "senha-errada"), null);
   assert.equal(authenticate(db, "outro", password), null);
   const token = authenticate(db, "teste", password);
   assert.ok(token);
   assert.equal(typeof token, "string");
+  assert.ok(sessionOwner(db, token));
+  assert.throws(() => setOwner(db, "teste", "abcd"), /senha forte/);
+  assert.ok(sessionOwner(db, token));
+  const newPassword = randomUUID();
+  setOwner(db, "teste", newPassword);
+  assert.equal(sessionOwner(db, token), null);
+  assert.equal(authenticate(db, "teste", password), null);
+  assert.ok(authenticate(db, "teste", newPassword));
   db.close();
 });
 
@@ -297,7 +370,7 @@ test("migração de saldo antigo conserva registros e só publica máquinas conf
   old.close();
   const db = openDatabase(file);
   try {
-    assert.equal(db.prepare("PRAGMA user_version").get().user_version, 2);
+    assert.equal(db.prepare("PRAGMA user_version").get().user_version, 3);
     assert.equal(db.prepare("SELECT COUNT(*) AS total FROM units").get().total, 0);
     assert.deepEqual(products(db)[0].stock, { ready: 0, pending: 0 });
     assert.equal(products(db)[0].publicPriceCents, 3000);

@@ -26,18 +26,38 @@
       <h1>Entrar no painel</h1>
       <label>Usuário <input name="username" autocomplete="username" maxlength="64" required /></label>
       <label>Senha <input type="password" name="password" autocomplete="current-password" maxlength="256" required /></label>
+      <label>Código do autenticador <input name="otp" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" /><small>Preencha se o segundo fator estiver ativo.</small></label>
       <button class="button button--primary" type="submit">Entrar</button>
     </form>
 
     <div id="workspace" hidden>
-      <nav class="admin-nav" aria-label="Painel">
+      <nav class="admin-nav" id="admin-nav" aria-label="Painel" hidden>
         <button type="button" data-tab="dashboard" aria-pressed="true">Visão geral</button>
         <button type="button" data-tab="products" aria-pressed="false">Equipamentos</button>
         <button type="button" data-tab="stock" aria-pressed="false">Máquinas e estoque</button>
         <button type="button" data-tab="demands" aria-pressed="false">Máquinas procuradas</button>
         <button type="button" data-tab="reports" aria-pressed="false">Exportações</button>
         <button type="button" data-tab="history" aria-pressed="false">Histórico</button>
+        <button type="button" data-tab="security" aria-pressed="false">Segurança</button>
       </nav>
+
+      <section id="security" data-panel hidden>
+        <h1>Segurança</h1>
+        <div class="admin-card">
+          <h2>Autenticação em dois fatores</h2>
+          <p id="totp-status" role="status"></p>
+          <form id="totp-begin" hidden>
+            <label>Senha atual <input type="password" name="password" autocomplete="current-password" required maxlength="256" /></label>
+            <button type="submit" class="button button--primary">Gerar chave do autenticador</button>
+          </form>
+          <form id="totp-confirm" hidden>
+            <p>Adicione esta chave ao seu aplicativo autenticador como código de seis dígitos a cada 30 segundos. Ela expira em 10 minutos se não for confirmada.</p>
+            <p><code id="totp-secret"></code></p>
+            <label>Código de seis dígitos <input name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required /></label>
+            <button type="submit" class="button button--primary">Ativar segundo fator</button>
+          </form>
+        </div>
+      </section>
 
       <section id="dashboard" data-panel>
         <div class="admin-heading"><h1>Visão geral</h1><label>Período <select id="period"><option value="7">7 dias</option><option value="30" selected>30 dias</option><option value="90">90 dias</option></select></label></div>

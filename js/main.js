@@ -26,6 +26,7 @@
   try {
     const { products } = await window.RenovapanAPI.get("/api/catalog");
     const featured = products.filter(product => product.featured);
+    window.RenovapanCart?.registerProducts(featured);
     featuredContainer.innerHTML = featured.map(product => window.RenovapanUI.productCard(product, true)).join("");
     status.hidden = featured.length > 0;
     if (!featured.length) status.textContent = "Os próximos destaques serão publicados aqui.";

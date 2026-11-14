@@ -6,8 +6,8 @@
   let viewProduct;
   try { choice = localStorage.getItem("renovapan-measurement"); } catch {}
 
-  async function get(url) {
-    const response = await fetch(url);
+  async function get(url, options) {
+    const response = await fetch(url, options);
     if (!response.ok) {
       const error = new Error("Não foi possível carregar o catálogo. Tente novamente.");
       error.status = response.status;
@@ -16,7 +16,7 @@
     return response.json();
   }
 
-  function track(event, productId = "") {
+  function track(event, productId = "", productCount) {
     if (event === "view") viewProduct = productId;
     if (optOut || choice !== "allowed") return;
     const key = event + ":" + productId;
@@ -24,7 +24,7 @@
     if (event === "view") tracked.add(key);
     fetch("/api/analytics", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ event, productId, consent: true }), keepalive: true
+      body: JSON.stringify({ event, productId, productCount, consent: true }), keepalive: true
     }).catch(() => {});
   }
 
