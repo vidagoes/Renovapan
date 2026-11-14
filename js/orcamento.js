@@ -5,11 +5,7 @@
   const equipment = new URLSearchParams(window.location.search).get("equipamento");
 
   if (equipment) {
-    const select = form.elements.equipamento;
-    const category = window.RENOVAPAN_DATA.products.find((product) => product.name === equipment)?.category;
-    const matchingOption = [...select.options].find((option) => option.text === category?.replace(/s$/, ""));
-    if (matchingOption) select.value = matchingOption.value;
-    form.elements.mensagem.value = `Tenho interesse no equipamento demonstrativo: ${equipment}. Gostaria de receber mais informações.`;
+    form.elements.mensagem.value = "Tenho interesse no equipamento: " + equipment + ". Gostaria de receber mais informações.";
   }
 
   form.elements.telefone.addEventListener("input", (event) => {

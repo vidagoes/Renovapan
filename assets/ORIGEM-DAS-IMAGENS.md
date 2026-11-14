@@ -14,6 +14,7 @@ Não são registros da oficina, dos funcionários ou de serviços reais da RENOV
 
 ## Imagens já existentes, preservadas
 
+- `logo-renovapan-2026.png` e `favicon-renovapan.png`: versões redimensionadas da arte fornecida pelo usuário em 12/11/2026, usada no site e no painel.
 - `logo-renovapan-oficial.png`: logo oficial fornecida pelo usuário, sem alteração. Original enviado: `2026-11-10 21_12_05-Greenshot.png`.
 - `logo-renovapan-original.png`: anexo anterior da conversa, preservado.
 - `referencia-hero.jpg` e `referencia-{masseira,batedeira,divisora,cilindro,modeladora}.png`: recortes da referência fornecida pelo usuário, `Homepage Renovapan_ Equipamentos para Panificação.png`. Uso ilustrativo, sem comprovação de modelo, especificações, condição ou estoque real.

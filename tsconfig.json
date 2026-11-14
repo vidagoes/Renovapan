@@ -1,0 +1,12 @@
+
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "NodeNext",
+    "strict": true,
+    "noEmit": true,
+    "erasableSyntaxOnly": true,
+    "types": []
+  },
+  "include": ["server/**/*.mts"]
+}

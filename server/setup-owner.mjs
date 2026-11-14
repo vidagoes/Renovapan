@@ -1,0 +1,17 @@
+
+import { openDatabase } from "./db.mjs";
+import { setOwner } from "./auth.mjs";
+
+const username = (process.argv[2] || "proprietario").trim().toLowerCase();
+const password = process.env.RENOVAPAN_ADMIN_PASSWORD;
+if (!/^[a-z0-9_.-]{3,64}$/.test(username) || !password || password.length < 4 || password.length > 256) {
+  console.error("Informe um usuário válido e RENOVAPAN_ADMIN_PASSWORD com 4 a 256 caracteres.");
+  process.exit(1);
+}
+const db = openDatabase();
+try {
+  setOwner(db, username, password);
+  console.log("Proprietário configurado com sucesso. Sessões anteriores foram revogadas.");
+} finally {
+  db.close();
+}

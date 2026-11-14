@@ -1,3 +1,9 @@
 node_modules/
+.renovapan/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.env
+.env.*
 .DS_Store
 Thumbs.db

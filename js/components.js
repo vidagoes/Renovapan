@@ -1,42 +1,19 @@
 (function () {
   const page = document.body.dataset.page;
   const cart = window.RenovapanCart;
-  const whatsappNumber = ((window.RENOVAPAN_DATA && window.RENOVAPAN_DATA.whatsappNumber) || "5511952031535").replace(/\D/g, "");
+  const whatsappNumber = "5511952031535";
 
-  function escapeHtml(value) {
-    return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }
+  const escape = value => String(value ?? "").replace(/[&<>"']/g, character => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[character]);
 
-  function machineSvg(product) {
-    const accent = product.accent || "#DB1A22";
-    const common = `
-      <defs>
-        <linearGradient id="metal-${product.id}" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="#ffffff"/><stop offset=".48" stop-color="#d8dfe2"/><stop offset="1" stop-color="#87949c"/>
-        </linearGradient>
-      </defs>`;
+  const mediaPath = id => "/media/" + encodeURIComponent(id);
+  const money = cents => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
 
-    const shapes = {
-      mixer: `<ellipse cx="150" cy="204" rx="92" ry="14" fill="#0c1720" opacity=".18"/><path d="M88 55h124a18 18 0 0 1 18 18v44H70V73a18 18 0 0 1 18-18z" fill="url(#metal-${product.id})"/><rect x="88" y="69" width="59" height="30" rx="6" fill="#263640"/><circle cx="101" cy="84" r="5" fill="${accent}"/><path d="M85 116h130l-15 72H100z" fill="url(#metal-${product.id})"/><path d="M77 125h146l-14 40c-6 17-22 29-40 29h-38c-18 0-34-12-40-29z" fill="url(#metal-${product.id})"/><ellipse cx="150" cy="126" rx="64" ry="12" fill="#63717a"/><path d="M145 93v47c0 8 6 14 14 14h8" fill="none" stroke="#697780" stroke-width="11" stroke-linecap="round"/><path d="M103 189v18m92-18v18" stroke="#293942" stroke-width="11"/><circle cx="103" cy="208" r="8" fill="#17242c"/><circle cx="195" cy="208" r="8" fill="#17242c"/>`,
-      beater: `<ellipse cx="150" cy="210" rx="79" ry="13" fill="#0c1720" opacity=".18"/><path d="M105 40h91a20 20 0 0 1 20 20v41H91V54a14 14 0 0 1 14-14z" fill="url(#metal-${product.id})"/><rect x="111" y="57" width="48" height="27" rx="5" fill="#273741"/><circle cx="126" cy="70" r="5" fill="${accent}"/><path d="M107 100h90v35h-90z" fill="#cbd4d8"/><path d="M143 113v44" stroke="#56656e" stroke-width="8"/><path d="M118 151h67l-8 38h-50z" fill="url(#metal-${product.id})"/><ellipse cx="151" cy="151" rx="37" ry="8" fill="#69767e"/><path d="M91 98h18v108H91zm107 0h18v108h-18z" fill="url(#metal-${product.id})"/><path d="M83 206h142" stroke="#263640" stroke-width="12" stroke-linecap="round"/><circle cx="103" cy="211" r="8" fill="#17242c"/><circle cx="204" cy="211" r="8" fill="#17242c"/>`,
-      roller: `<ellipse cx="151" cy="211" rx="103" ry="14" fill="#0c1720" opacity=".18"/><path d="M58 70h184v45H58z" fill="url(#metal-${product.id})"/><path d="M73 115h154v67H73z" fill="#c9d2d6"/><rect x="85" y="127" width="130" height="20" rx="8" fill="#64727a"/><rect x="94" y="148" width="112" height="17" rx="7" fill="#7c8990"/><path d="M74 181h35v28H68zm117 0h35l6 28h-41z" fill="#263640"/><path d="M45 59h210v20H45z" fill="${accent}"/><path d="M76 46h148v13H76z" fill="#283942"/><circle cx="211" cy="69" r="6" fill="#ef4444"/><circle cx="82" cy="211" r="8" fill="#17242c"/><circle cx="216" cy="211" r="8" fill="#17242c"/>`,
-      cylinder: `<ellipse cx="150" cy="208" rx="96" ry="13" fill="#0c1720" opacity=".18"/><path d="M69 57h162v134H69z" fill="url(#metal-${product.id})"/><path d="M54 48h192v22H54z" fill="${accent}"/><rect x="84" y="83" width="132" height="25" rx="10" fill="#65737b"/><rect x="84" y="113" width="132" height="25" rx="10" fill="#7d898f"/><path d="M93 145h114l17 31H76z" fill="#c0c9cd"/><rect x="85" y="176" width="24" height="31" fill="#263640"/><rect x="191" y="176" width="24" height="31" fill="#263640"/><circle cx="97" cy="209" r="8" fill="#17242c"/><circle cx="203" cy="209" r="8" fill="#17242c"/><circle cx="212" cy="60" r="6" fill="#ef4444"/>`,
-      divider: `<ellipse cx="150" cy="211" rx="87" ry="13" fill="#0c1720" opacity=".18"/><path d="M89 42h122v53H89z" fill="url(#metal-${product.id})"/><path d="M74 95h152v92H74z" fill="#cbd4d8"/><path d="M105 28h90l16 14H89z" fill="${accent}"/><path d="M110 108h80v47h-80z" fill="#263640"/><path d="M121 118h58M121 130h58M121 142h58" stroke="#9aa5aa" stroke-width="4"/><path d="M84 187h28v21H80zm104 0h28l4 21h-32z" fill="#263640"/><circle cx="99" cy="210" r="8" fill="#17242c"/><circle cx="205" cy="210" r="8" fill="#17242c"/><circle cx="199" cy="71" r="7" fill="#ef4444"/>`,
-      tilter: `<ellipse cx="151" cy="210" rx="91" ry="13" fill="#0c1720" opacity=".18"/><path d="M78 64h144l-18 121H96z" fill="url(#metal-${product.id})"/><path d="M62 92h176l-16 54c-6 21-25 35-47 35h-50c-22 0-41-14-47-35z" fill="url(#metal-${product.id})"/><ellipse cx="150" cy="93" rx="80" ry="14" fill="#67747c"/><path d="M92 56h116l-4-22H96z" fill="${accent}"/><rect x="109" y="39" width="50" height="18" rx="4" fill="#263640"/><path d="M104 181v26m91-26v26" stroke="#263640" stroke-width="12"/><circle cx="104" cy="209" r="8" fill="#17242c"/><circle cx="195" cy="209" r="8" fill="#17242c"/>`
-    };
-
-    return `<svg class="product-card__machine" viewBox="0 0 300 240" role="img" aria-label="Ilustração demonstrativa de ${escapeHtml(product.name)}">${common}${shapes[product.type] || shapes.mixer}</svg>`;
-  }
-
-  function machineVisual(product) {
-    const images = { mixer: 'masseira', beater: 'batedeira', divider: 'divisora', cylinder: 'cilindro', roller: 'modeladora' };
-    const image = images[product.type];
-    return image ? `<img class="product-card__machine product-photo" src="assets/referencia-${image}.png" alt="Imagem ilustrativa de ${escapeHtml(product.category.toLowerCase())}" width="190" height="111" loading="lazy" />` : machineSvg(product);
+  function stockLabels({ ready, pending } = {}) {
+    if (!ready && !pending) return '<span class="stock-badge stock-badge--out">Sem estoque</span>';
+    return (ready ? '<span class="stock-badge stock-badge--ready">Pronta entrega · ' + ready + '</span>' : '')
+      + (pending ? '<span class="stock-badge stock-badge--pending">Sob encomenda · ' + pending + '</span>' : '');
   }
 
   function formatAddLabel(qty) {
@@ -44,25 +21,34 @@
   }
 
   function productCard(product, reveal = false) {
-    const qty = cart ? cart.getItemQuantity(product.id) : 0;
+    if (cart && typeof cart.registerProducts === "function") {
+      cart.registerProducts([product]);
+    }
+    const available = product.variants?.find(variant => (variant.ready || 0) + (variant.pending || 0) > 0);
+    const image = available?.images?.[0] || product.images?.[0] || product.variants?.find(variant => variant.images?.length)?.images?.[0];
+    const photoKind = product.variants?.find(variant => variant.photoKinds?.[image])?.photoKinds?.[image];
+    const photoLabel = { before: "Antes da reforma", after: "Depois da reforma", reference: "Foto de referência" }[photoKind];
+    const photo = image
+      ? '<img class="catalog-actual-image" src="' + mediaPath(image) + '" alt="' + escape(product.name) + '" loading="lazy" />'
+      : '<p class="catalog-photo-empty">Fotos sob consulta</p>';
+
+    const color = product.selectedColor || "";
+    const qty = cart ? cart.getItemQuantity(product.id, color) : 0;
     const inCartClass = qty > 0 ? " is-in-cart" : "";
-    return `
-      <article class="product-card${reveal ? " reveal" : ""}" data-product-id="${escapeHtml(product.id)}">
-        <a class="product-card__main-link" href="equipamento.html?id=${encodeURIComponent(product.id)}">
-          <div class="product-card__image">
-            <span class="product-card__tag">Demonstração</span><span class="product-card__status" title="Disponibilidade demonstrativa"></span>
-            ${machineVisual(product)}
-          </div>
-          <div class="product-card__body">
-            <span class="product-card__category">${escapeHtml(product.category)}</span>
-            <h3>${escapeHtml(product.name)}</h3><p>${escapeHtml(product.description)}</p>
-            <div class="product-card__footer"><span>Ver equipamento</span><b aria-hidden="true">→</b></div>
-          </div>
-        </a>
-        <div class="product-card__actions">
-          <button class="button button--primary button--full product-card__add${inCartClass}" type="button" data-add-to-cart="${escapeHtml(product.id)}">${formatAddLabel(qty)}</button>
-        </div>
-      </article>`;
+
+    return '<article class="product-card' + (reveal ? ' reveal' : '') + '" data-product-id="' + escape(product.id) + '">'
+      + '<a class="product-card__main-link" href="equipamento.html?id=' + encodeURIComponent(product.id)
+      + (color ? '&amp;cor=' + encodeURIComponent(color) : '') + '">'
+      + '<div class="product-card__image">' + photo + (photoLabel ? '<span class="product-gallery__label">' + photoLabel + '</span>' : '') + '</div>'
+      + '<div class="product-card__body"><span class="product-card__category">' + escape(product.category) + '</span>'
+      + '<h3>' + escape(product.name) + '</h3><p class="catalog-card-description">' + escape(product.description) + '</p>'
+      + '<div class="catalog-availability">' + stockLabels(product.stock) + '</div>'
+      + '<div class="product-card__footer"><span>Ver equipamento</span><b aria-hidden="true">→</b></div></div></a>'
+      + '<div class="product-card__actions">'
+      + '<button class="button button--primary button--full product-card__add' + inCartClass + '" type="button" data-add-to-cart="'
+      + escape(product.id) + '"' + (color ? ' data-product-color="' + escape(color) + '"' : '') + '>'
+      + formatAddLabel(qty) + '</button>'
+      + '</div></article>';
   }
 
   const links = [
@@ -90,7 +76,7 @@
       <header class="site-header">
         <div class="institutional-bar"><div class="container institutional-bar__inner"><span>Mais de 30 anos no setor</span><span>Reforma e recuperação</span><span>Comercialização de equipamentos</span><span>Atendimento em todo o Brasil</span></div></div>
         <div class="container site-header__inner">
-          <a class="logo" href="index.html" aria-label="RENOVAPAN — página inicial"><img class="logo__image" src="assets/logo-renovapan-oficial.png" alt="RENOVAPAN — Equipamentos Para Panificação" width="264" height="146" /></a>
+          <a class="logo" href="index.html" aria-label="RENOVAPAN — página inicial"><img class="logo__image" src="assets/logo-renovapan-2026.png" alt="RENOVAPAN — Equipamentos Para Panificação" width="720" height="480" /></a>
           <nav class="main-nav" id="main-nav" aria-label="Navegação principal">
             ${links.map(([key, href, label]) => `<a href="${href}"${page === key ? ' aria-current="page"' : ""}>${label}</a>`).join("")}
             <a class="button button--primary" href="orcamento.html"${page === "orcamento" ? ' aria-current="page"' : ""}>Solicitar orçamento</a>
@@ -119,13 +105,25 @@
     footer.innerHTML = `
       <footer class="site-footer">
         <div class="container site-footer__main">
-          <div class="site-footer__brand"><a class="logo" href="index.html"><img class="logo__image" src="assets/logo-renovapan-oficial.png" alt="RENOVAPAN — Equipamentos Para Panificação" width="264" height="146" /></a><p>Reforma, recuperação e comercialização de máquinas industriais para panificação.</p></div>
+          <div class="site-footer__brand"><a class="logo" href="index.html"><img class="logo__image" src="assets/logo-renovapan-2026.png" alt="RENOVAPAN — Equipamentos Para Panificação" width="720" height="480" /></a><p>Reforma, recuperação e comercialização de máquinas industriais para panificação.</p></div>
           <div><h3>Navegação</h3><div class="site-footer__links"><a href="index.html">Início</a><a href="catalogo.html">Equipamentos</a><a href="sobre.html">Sobre nós</a><a href="orcamento.html">Orçamento</a></div></div>
-          <div class="site-footer__contact" id="contato"><h3>Contato</h3><p>Atendimento em todo o Brasil</p><div class="site-footer__links"><a href="tel:+${whatsappNumber}">(11) 95203-1535</a><a href="https://wa.me/${whatsappNumber}" target="_blank" rel="noopener noreferrer">Falar pelo WhatsApp ↗</a><a href="https://www.instagram.com/renovapan/" target="_blank" rel="noopener noreferrer">Instagram ↗</a><a href="https://www.facebook.com/MaquinasRenovapan/" target="_blank" rel="noopener noreferrer">Facebook ↗</a><a href="https://www.youtube.com/channel/UCfcH87rDWBHJVYtmIADU_Zw" target="_blank" rel="noopener noreferrer">YouTube ↗</a><a href="https://linktr.ee/renovapan" target="_blank" rel="noopener noreferrer">Todos os canais ↗</a></div></div>
+          <div class="site-footer__contact" id="contato"><h3>Contato</h3><p>Atendimento em todo o Brasil</p><div class="site-footer__links"><a href="tel:+5511952031535">(11) 95203-1535</a><a href="https://wa.me/5511952031535" target="_blank" rel="noopener noreferrer">Falar pelo WhatsApp ↗</a><a href="https://www.instagram.com/renovapan/" target="_blank" rel="noopener noreferrer">Instagram ↗</a><a href="https://www.facebook.com/MaquinasRenovapan/" target="_blank" rel="noopener noreferrer">Facebook ↗</a><a href="https://www.youtube.com/channel/UCfcH87rDWBHJVYtmIADU_Zw" target="_blank" rel="noopener noreferrer">YouTube ↗</a><a href="https://linktr.ee/renovapan" target="_blank" rel="noopener noreferrer">Todos os canais ↗</a></div></div>
         </div>
-        <div class="container site-footer__bottom"><p>© <span id="current-year"></span> RENOVAPAN. MVP demonstrativo.</p><p>Conteúdo, imagens e disponibilidade sujeitos à validação.</p></div>
+        <div class="container site-footer__bottom"><p>© <span id="current-year"></span> RENOVAPAN.</p><button type="button" class="measurement-settings" data-metrics-settings>Preferências de medição</button><p>Consulte condições e disponibilidade no WhatsApp.</p></div>
       </footer>`;
     footer.querySelector("#current-year").textContent = new Date().getFullYear();
+  }
+
+  // Guard for headless / test environments without full DOM support
+  if (!document || typeof document.createElement !== "function" || !document.body || typeof document.body.appendChild !== "function") {
+    window.RenovapanUI = {
+      escape,
+      mediaPath,
+      money,
+      stockLabels,
+      productCard
+    };
+    return;
   }
 
   // Cart drawer & toast UI
@@ -207,9 +205,9 @@
 
   if (cart && customerForm) {
     const saved = cart.getCustomer();
-    customerForm.elements.nome.value = saved.nome;
-    customerForm.elements.empresa.value = saved.empresa;
-    customerForm.elements.observacao.value = saved.observacao;
+    customerForm.elements.nome.value = saved.nome || "";
+    customerForm.elements.empresa.value = saved.empresa || "";
+    customerForm.elements.observacao.value = saved.observacao || "";
   }
 
   function syncWhatsAppLinkAndPreview() {
@@ -222,7 +220,8 @@
     if (!cart) return;
     document.querySelectorAll("[data-add-to-cart]").forEach((btn) => {
       const id = btn.dataset.addToCart;
-      const qty = cart.getItemQuantity(id);
+      const color = btn.dataset.productColor || "";
+      const qty = cart.getItemQuantity(id, color);
       btn.classList.toggle("is-in-cart", qty > 0);
       btn.textContent = formatAddLabel(qty);
     });
@@ -261,26 +260,36 @@
 
     if (!isEmpty) {
       itemsList.innerHTML = cartItems
-        .map(
-          ({ product, quantity }) => `
-            <li class="cart-item" data-item-id="${escapeHtml(product.id)}">
-              <a class="cart-item__thumb" href="equipamento.html?id=${encodeURIComponent(product.id)}" aria-label="Ver ${escapeHtml(product.name)}">
-                ${machineVisual(product)}
+        .map(({ product, quantity }) => {
+          const itemKey = `${product.id}__${product.color || ""}`;
+          const thumbHtml = product.image
+            ? `<img class="cart-item__img" src="${mediaPath(product.image)}" alt="${escape(product.name)}" />`
+            : `<span class="cart-item__placeholder" aria-hidden="true">🥖</span>`;
+          const detailsList = [];
+          if (product.category) detailsList.push(escape(product.category));
+          if (product.color) detailsList.push(`Cor: ${escape(product.color)}`);
+          if (product.code) detailsList.push(`Cód. ${escape(product.code)}`);
+          const detailsStr = detailsList.join(" · ");
+
+          return `
+            <li class="cart-item" data-item-id="${escape(product.id)}" data-item-color="${escape(product.color || "")}">
+              <a class="cart-item__thumb" href="equipamento.html?id=${encodeURIComponent(product.id)}" aria-label="Ver ${escape(product.name)}">
+                ${thumbHtml}
               </a>
               <div class="cart-item__info">
-                <span class="cart-item__category">${escapeHtml(product.category)}</span>
-                <a class="cart-item__name" href="equipamento.html?id=${encodeURIComponent(product.id)}">${escapeHtml(product.name)}</a>
+                ${detailsStr ? `<span class="cart-item__category">${detailsStr}</span>` : ""}
+                <a class="cart-item__name" href="equipamento.html?id=${encodeURIComponent(product.id)}">${escape(product.name)}</a>
                 <div class="cart-item__controls">
-                  <div class="qty-control qty-control--compact" role="group" aria-label="Quantidade de ${escapeHtml(product.name)}">
-                    <button type="button" data-cart-action="decrease" aria-label="Diminuir quantidade de ${escapeHtml(product.name)}">−</button>
+                  <div class="qty-control qty-control--compact" role="group" aria-label="Quantidade de ${escape(product.name)}">
+                    <button type="button" data-cart-action="decrease" aria-label="Diminuir quantidade de ${escape(product.name)}">−</button>
                     <span aria-live="polite">${quantity}</span>
-                    <button type="button" data-cart-action="increase" aria-label="Aumentar quantidade de ${escapeHtml(product.name)}">+</button>
+                    <button type="button" data-cart-action="increase" aria-label="Aumentar quantidade de ${escape(product.name)}">+</button>
                   </div>
-                  <button class="cart-item__remove" type="button" data-cart-action="remove" aria-label="Remover ${escapeHtml(product.name)}">Remover</button>
+                  <button class="cart-item__remove" type="button" data-cart-action="remove" aria-label="Remover ${escape(product.name)}">Remover</button>
                 </div>
               </div>
-            </li>`
-        )
+            </li>`;
+        })
         .join("");
     } else {
       itemsList.innerHTML = "";
@@ -290,7 +299,7 @@
       const target = pendingFocus;
       pendingFocus = null;
       const nextBtn = itemsList.querySelector(
-        `[data-item-id="${CSS.escape(target.id)}"] [data-cart-action="${CSS.escape(target.action)}"]`
+        `[data-item-id="${CSS.escape(target.id)}"][data-item-color="${CSS.escape(target.color || "")}"] [data-cart-action="${CSS.escape(target.action)}"]`
       );
       if (nextBtn) nextBtn.focus();
       else closeBtn.focus();
@@ -370,9 +379,12 @@
     const addBtn = event.target.closest("[data-add-to-cart]");
     if (!addBtn || !cart) return;
     const productId = addBtn.dataset.addToCart;
-    const product = window.RENOVAPAN_DATA?.products?.find((item) => item.id === productId);
-    if (cart.addItem(productId, 1) && product) {
-      showToast(`${product.shortName || product.name} adicionado ao carrinho`);
+    const color = addBtn.dataset.productColor || "";
+    if (cart.addItem(productId, 1, { color })) {
+      const items = cart.getItems();
+      const added = items.find((i) => i.product.id === productId);
+      const name = added?.product?.name || "Equipamento";
+      showToast(`${name} adicionado ao carrinho`);
     }
   });
 
@@ -382,23 +394,24 @@
     const itemEl = actionBtn.closest("[data-item-id]");
     if (!itemEl) return;
     const productId = itemEl.dataset.itemId;
+    const color = itemEl.dataset.itemColor || "";
     const action = actionBtn.dataset.cartAction;
-    const currentQty = cart.getItemQuantity(productId);
+    const currentQty = cart.getItemQuantity(productId, color);
 
     if (action === "increase") {
-      pendingFocus = { id: productId, action };
-      cart.setQuantity(productId, currentQty + 1);
+      pendingFocus = { id: productId, color, action };
+      cart.setQuantity(productId, currentQty + 1, color);
     } else if (action === "decrease") {
       if (currentQty > 1) {
-        pendingFocus = { id: productId, action };
-        cart.setQuantity(productId, currentQty - 1);
+        pendingFocus = { id: productId, color, action };
+        cart.setQuantity(productId, currentQty - 1, color);
       } else {
-        pendingFocus = { id: productId, action: "remove" };
-        cart.removeItem(productId);
+        pendingFocus = { id: productId, color, action: "remove" };
+        cart.removeItem(productId, color);
       }
     } else if (action === "remove") {
-      pendingFocus = { id: productId, action: "remove" };
-      cart.removeItem(productId);
+      pendingFocus = { id: productId, color, action: "remove" };
+      cart.removeItem(productId, color);
     }
   });
 
@@ -418,6 +431,7 @@
 
   whatsappLink.addEventListener("click", () => {
     if (sentFeedback) sentFeedback.hidden = false;
+    window.RenovapanAPI?.track?.("whatsapp", "cart");
   });
 
   if (cart) {
@@ -425,5 +439,14 @@
     renderCart();
   }
 
-  window.RenovapanUI = { machineSvg, machineVisual, productCard, openCart, closeCart, showToast };
+  window.RenovapanUI = {
+    escape,
+    mediaPath,
+    money,
+    stockLabels,
+    productCard,
+    openCart,
+    closeCart,
+    showToast
+  };
 })();
