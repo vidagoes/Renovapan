@@ -1,3 +1,15 @@
+# [1.2.0](https://github.com/vidagoes/Renovapan/compare/v1.1.0...v1.2.0) (2026-11-14)
+
+
+### Bug Fixes
+
+* mesclando funcionalidades de carrinho com painel de admin ([594afb9](https://github.com/vidagoes/Renovapan/commit/594afb9db298557500aa77282da3a61e1f601023))
+
+
+### Features
+
+* **carrinho:** adicionando carrinho para adicionar produtos e integrar com whatsapp ([858403b](https://github.com/vidagoes/Renovapan/commit/858403bc98e43d91b93efc759cbf41fa0e8c016d))
+
 # [1.1.0](https://github.com/vidagoes/Renovapan/compare/v1.0.0...v1.1.0) (2026-11-12)
 
 
