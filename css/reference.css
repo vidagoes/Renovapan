@@ -182,7 +182,8 @@ h1, h2, h3 { font-family: "Manrope", Arial, sans-serif; font-weight: 800; letter
 .stock-badge { display: inline-flex; padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; line-height: 1.4; text-transform: uppercase; }
 .stock-badge--ready { background: #e1f2e7; color: #15542e; }
 .stock-badge--pending { background: #fff0d8; color: #784000; }
-.stock-badge--out { background: #f0e9eb; color: #6b313d; }
+.stock-badge--out { background: #e8ecf0; color: #364254; }
+.catalog-stock-total { margin: 16px 0 8px; color: var(--navy); font-size: .94rem; }
 .catalog-actual-image { width: 100%; height: 100%; max-height: 530px; object-fit: contain; }
 .product-card__image .catalog-actual-image { max-height: 235px; }
 .catalog-photo-empty { margin: 0; }
@@ -190,11 +191,13 @@ h1, h2, h3 { font-family: "Manrope", Arial, sans-serif; font-weight: 800; letter
 .catalog-description { white-space: pre-line; overflow-wrap: anywhere; }
 .catalog-colors-title { font-size: 17px; margin: 18px 0 10px; }
 .catalog-colors { display: flex; flex-wrap: wrap; gap: 10px; }
-.catalog-color { display: grid; align-content: start; gap: 5px; }
-.catalog-color .filter-chip { height: auto; min-height: 42px; max-width: 100%; overflow-wrap: anywhere; }
+.catalog-color { display: grid; align-content: start; gap: 5px; min-width: 0; max-width: 100%; }
+.catalog-color .filter-chip { height: auto; min-height: 44px; max-width: 100%; overflow-wrap: anywhere; }
 .catalog-color .filter-chip[aria-pressed="true"] { color: #fff; background: var(--navy); border-color: var(--navy); }
 .catalog-color .filter-chip:disabled { background: #eef0f3; color: #4f5867; border-color: #ced5df; cursor: not-allowed; }
-.catalog-color-query { font-size: 12px; text-decoration: underline; color: var(--red-dark); }
+.catalog-color-query { display: inline-flex; align-items: center; min-height: 32px; font-size: .875rem; text-decoration: underline; color: var(--red-dark); }
+.catalog-color-stock { font-size: .875rem; color: var(--navy); }
+#detail-qty-notice:not(:empty) { margin: 8px 0; font-weight: 600; }
 .catalog-condition { display: grid; gap: 6px; margin: 12px 0 16px; }
 .catalog-condition select { border: 1px solid #aebacf; border-radius: 7px; padding: 8px; background: white; color: var(--navy); }
 .catalog-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }

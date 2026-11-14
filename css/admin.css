@@ -58,6 +58,7 @@
 .admin-audit summary, .admin-card details summary { cursor: pointer; }
 .admin-audit pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
 @media (max-width: 730px) {
+  .admin-nav button, .admin-choice { min-height: 44px; }
   .admin-catalog, .admin-columns { grid-template-columns: 1fr; }
   .admin-list :is(#product-list, #unit-list, #demand-list) { max-height: 200px; }
   .admin-heading { align-items: stretch; flex-direction: column; }

@@ -36,15 +36,18 @@
 
   function whatsapp(variant, state) {
     const description = [product.name, product.brand, product.model].filter(Boolean).join(" · ");
-    const color = variant ? " Cor de interesse: " + variant.color + "." : "";
+    const color = " Cor de interesse: " + (variant?.color || "a definir") + ".";
     const situation = state === "out"
       ? " Situação: " + (variant && (product.stock?.ready || 0) + (product.stock?.pending || 0) > 0 ? "cor esgotada" : "sem estoque") + "."
       : " Condição: " + labels[state] + ".";
+    const excess = state !== "out" && selectedQty > variant[state]
+      ? " Gostaria de consultar também a possibilidade de aquisição ou reforma para as unidades acima do saldo." : "";
     const question = state === "out"
-      ? " Gostaria de consultar a possibilidade de obter uma unidade para aquisição e reforma. Poderiam verificar valores e condições?"
+      ? " Gostaria de consultar a possibilidade de conseguirem o equipamento para reforma e venda. Poderiam verificar disponibilidade, valores e prazos?"
       : " Poderiam informar valores e condições?";
     return "https://wa.me/5511952031535?text=" + encodeURIComponent(
-      "Olá! Tenho interesse em " + description + " (código " + product.code + ")." + color + situation + question
+      "Olá! Tenho interesse em " + description + " (código " + product.code + ")." + color + situation
+      + " Quantidade desejada: " + selectedQty + "." + excess + question
     );
   }
 
@@ -82,14 +85,16 @@
       return '<div class="catalog-color"><button type="button" class="filter-chip" data-variant="' + escape(variant.id)
         + '" aria-pressed="' + (selected?.id === variant.id) + '"' + (disabled ? ' disabled' : '')
         + '>' + escape(variant.color) + (disabled ? ' · Esgotada' : '') + '</button>'
-        + (disabled ? '<a class="catalog-color-query" data-product-id="' + escape(product.id) + '" href="' + whatsapp(variant, "out")
-          + '" target="_blank" rel="noopener noreferrer">Consultar cor ' + escape(variant.color) + '</a>' : '') + '</div>';
+        + (disabled ? '<a class="catalog-color-query" data-quote-variant="' + escape(variant.id)
+          + '" data-product-id="' + escape(product.id) + '" href="' + whatsapp(variant, "out")
+          + '" aria-label="Consultar esta cor: ' + escape(variant.color) + '" target="_blank" rel="noopener noreferrer">Consultar esta cor</a>'
+          : '<span class="catalog-color-stock">' + variant.ready + ' pronta entrega · ' + variant.pending + ' sob encomenda</span>') + '</div>';
     }).join("");
     const states = selected ? Object.keys(labels).filter(key => selected[key] > 0) : [];
     const stateOptions = states.length > 1 ? '<label class="catalog-condition">Condição de interesse <select id="catalog-condition">'
       + states.map(key => '<option value="' + key + '"' + (condition === key ? ' selected' : '') + '>' + labels[key] + '</option>').join("")
       + '</select></label>' : '';
-    const outMessage = selected ? '' : '<p class="product-notice">Sem unidades disponíveis no momento. Consulte a possibilidade de encomendar este equipamento. Nossa equipe poderá verificar a disponibilidade para aquisição e reforma.</p>';
+    const outMessage = selected ? '' : '<p class="product-notice">Não temos unidades disponíveis no momento. Consulte a possibilidade de conseguirmos este equipamento para reforma e venda.</p>';
     const cta = selected ? "Ver valores no WhatsApp" : "Consultar possibilidade de encomenda";
 
     const inCartQty = cart?.getItemQuantity(product.id, quoteSelection()) || 0;
@@ -98,8 +103,12 @@
       : "Adicionar à lista";
     const totalCart = cart ? cart.getTotalCount() : 0;
 
-    document.getElementById("product-stock").innerHTML = (colors ? '<h2 class="catalog-colors-title">Cores</h2><div class="catalog-colors">' + colors + '</div>' : '')
-      + '<div class="catalog-availability" aria-live="polite">' + stockLabels(selected || product.stock) + '</div>'
+    const total = product.stock.ready + product.stock.pending;
+    document.getElementById("product-stock").innerHTML = '<p class="catalog-stock-total">Total do equipamento: <strong>'
+      + total + (total === 1 ? ' unidade livre' : ' unidades livres') + '</strong></p>'
+      + (colors ? '<h2 class="catalog-colors-title">Disponibilidade por cor</h2><div class="catalog-colors">' + colors + '</div>' : '')
+      + '<div class="catalog-availability" aria-live="polite" aria-label="' + (selected ? 'Disponibilidade na cor ' + escape(selected.color) : 'Disponibilidade do equipamento') + '">'
+      + stockLabels(selected || product.stock) + '</div>'
       + stateOptions + outMessage
       + '<div class="product-detail__actions">'
       +   '<div class="qty-control" role="group" aria-label="Quantidade desejada para a lista">'
@@ -109,11 +118,27 @@
       +   '</div>'
       +   '<button class="button button--primary product-detail__add" id="detail-add-to-cart" type="button">' + addLabel + '</button>'
       + '</div>'
+      + '<p class="catalog-color-stock" id="detail-qty-notice" aria-live="polite"></p>'
       + '<div class="product-detail__secondary">'
       +   '<button class="button button--outline" id="detail-open-cart" type="button"' + (totalCart > 0 ? '' : ' hidden') + '>Ver lista de orçamento (' + totalCart + ')</button>'
       +   '<a id="product-whatsapp" class="button button--outline button--full" target="_blank" rel="noopener noreferrer" data-product-id="'
       +   escape(product.id) + '" href="' + whatsapp(selected, selected ? condition : "out") + '">' + cta + ' ↗</a>'
       + '</div>';
+    showQuantity();
+  }
+
+  function showQuantity() {
+    const value = document.getElementById("detail-qty-value");
+    if (!value) return;
+    value.textContent = String(selectedQty);
+    const excess = selected ? Math.max(0, selectedQty - selected[condition]) : 0;
+    document.getElementById("detail-qty-notice").textContent = !excess ? "" : excess === 1
+      ? "1 unidade acima do saldo depende de confirmação comercial."
+      : excess + " unidades acima do saldo dependem de confirmação comercial.";
+    document.getElementById("product-whatsapp").href = whatsapp(selected, selected ? condition : "out");
+    for (const link of root.querySelectorAll("[data-quote-variant]")) {
+      link.href = whatsapp(product.variants.find(variant => variant.id === link.dataset.quoteVariant), "out");
+    }
   }
 
   root.addEventListener("click", event => {
@@ -140,15 +165,13 @@
     if (decBtn) {
       if (selectedQty > 1) {
         selectedQty -= 1;
-        const valEl = document.getElementById("detail-qty-value");
-        if (valEl) valEl.textContent = String(selectedQty);
+        showQuantity();
       }
     }
     if (incBtn) {
       if (selectedQty < 99) {
         selectedQty += 1;
-        const valEl = document.getElementById("detail-qty-value");
-        if (valEl) valEl.textContent = String(selectedQty);
+        showQuantity();
       }
     }
     if (addBtn && cart) {

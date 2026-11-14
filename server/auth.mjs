@@ -8,6 +8,7 @@ const sessionDuration = 8 * 60 * 60 * 1000;
 const passwordOptions = { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 const dummyHash = "00000000000000000000000000000000:" + "00".repeat(64);
 const digest = value => createHash("sha256").update(value).digest("hex");
+const sessionHash = (token, prototype) => digest(prototype ? "prototype:" + token : token);
 
 export function hashPassword(password) {
   const salt = randomBytes(16).toString("hex");
@@ -25,8 +26,16 @@ function passwordMatches(password, stored) {
   return timingSafeEqual(scryptSync(password, salt, 64, passwordOptions), Buffer.from(hash, "hex"));
 }
 
-export function setOwner(db, username, password) {
-  if (!strongPassword(password)) throw new RequestError(400, "Use uma senha forte de 14 a 256 caracteres.");
+export function validOwnerPassword(password, prototype) {
+  return prototype ? typeof password === "string" && password.trim().length >= 8 && password.length <= 256
+    : strongPassword(password);
+}
+
+export function setOwner(db, username, password, { prototype = false } = {}) {
+  if (!validOwnerPassword(password, prototype)) {
+    throw new RequestError(400, prototype ? "Use uma senha de 8 a 256 caracteres."
+      : "Use uma senha forte de 14 a 256 caracteres.");
+  }
   const hash = hashPassword(password);
   transaction(db, () => {
     db.prepare("INSERT INTO owner (id, username, password_hash, totp_secret) VALUES (1, ?, ?, NULL) ON CONFLICT(id) DO UPDATE SET username=excluded.username, password_hash=excluded.password_hash, totp_secret=NULL, last_totp=-1").run(username, hash);
@@ -34,13 +43,13 @@ export function setOwner(db, username, password) {
   });
 }
 
-export function authenticate(db, username, password, otp, key = totpKey()) {
+export function authenticate(db, username, password, otp, key = totpKey(), prototype = false) {
   if (typeof username !== "string" || username.length > 64 || typeof password !== "string" || password.length > 256) return null;
   const owner = db.prepare("SELECT * FROM owner WHERE username = ?").get(username.trim().toLowerCase());
   const valid = passwordMatches(password, owner?.password_hash);
   if (!owner || !valid) return null;
   let step = null;
-  if (owner.totp_secret) {
+  if (!prototype && owner.totp_secret) {
     try { step = verifiedTotp(decryptTotp(owner.totp_secret, key), otp, owner.last_totp); }
     catch { return null; }
     if (step === null) return null;
@@ -53,14 +62,14 @@ export function authenticate(db, username, password, otp, key = totpKey()) {
       if (current.last_totp >= step) return null;
       db.prepare("UPDATE owner SET last_totp = ? WHERE id = 1").run(step);
     }
-    return createSession(db);
+    return createSession(db, prototype);
   });
 }
 
-function createSession(db) {
+function createSession(db, prototype = false) {
   db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(Date.now());
   const token = randomBytes(32).toString("hex");
-  db.prepare("INSERT INTO sessions VALUES (?, 1, ?)").run(digest(token), Date.now() + sessionDuration);
+  db.prepare("INSERT INTO sessions VALUES (?, 1, ?)").run(sessionHash(token, prototype), Date.now() + sessionDuration);
   return token;
 }
 
@@ -96,23 +105,27 @@ export function confirmTotp(db, token, otp, key = totpKey()) {
   });
 }
 
-export function sessionToken(request, secure) {
-  const name = secure ? "__Host-renovapan" : "renovapan_session";
+function cookieName(secure, prototype) {
+  return prototype ? "renovapan_prototipo" : secure ? "__Host-renovapan" : "renovapan_session";
+}
+
+export function sessionToken(request, secure, prototype) {
+  const name = cookieName(secure, prototype);
   return (request.headers.cookie || "").split(";").map(part => part.trim())
     .find(part => part.startsWith(name + "="))?.slice(name.length + 1);
 }
 
-export function sessionOwner(db, token) {
+export function sessionOwner(db, token, prototype = false) {
   if (!/^[a-f0-9]{64}$/.test(token || "")) return null;
-  return db.prepare("SELECT owner.username, owner.totp_secret IS NOT NULL AS totpEnabled FROM sessions JOIN owner ON owner.id = sessions.owner_id WHERE token_hash = ? AND expires_at > ?").get(digest(token), Date.now()) || null;
+  return db.prepare("SELECT owner.username, owner.totp_secret IS NOT NULL AS totpEnabled FROM sessions JOIN owner ON owner.id = sessions.owner_id WHERE token_hash = ? AND expires_at > ?").get(sessionHash(token, prototype), Date.now()) || null;
 }
 
-export function endSession(db, token) {
-  if (token) db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(digest(token));
+export function endSession(db, token, prototype) {
+  if (token) db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(sessionHash(token, prototype));
 }
 
-export function sessionCookie(token, secure) {
-  const name = secure ? "__Host-renovapan" : "renovapan_session";
+export function sessionCookie(token, secure, prototype) {
+  const name = cookieName(secure, prototype);
   return name + "=" + (token || "") + "; Path=/; HttpOnly; SameSite=Strict; Max-Age="
     + (token ? sessionDuration / 1000 : 0) + (secure ? "; Secure" : "");
 }

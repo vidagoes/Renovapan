@@ -84,6 +84,7 @@ export function dashboard(db, days) {
     financial,
     products: db.prepare("SELECT COUNT(*) AS total FROM products").get().total,
     inventory: db.prepare("SELECT COALESCE(SUM(ready), 0) AS ready, COALESCE(SUM(pending), 0) AS pending FROM variant_stock").get(),
+    reservedUnits: db.prepare("SELECT COUNT(*) AS total FROM units WHERE commercial = 'reserved'").get().total,
     stages: db.prepare("SELECT technical, COUNT(*) AS total FROM units WHERE commercial IN ('free','reserved') GROUP BY technical").all(),
     soldOut: db.prepare("SELECT COUNT(*) AS total FROM products p WHERE p.visibility = 'published' AND NOT EXISTS (SELECT 1 FROM variants v JOIN variant_stock s ON s.id = v.id WHERE v.product_id = p.id AND s.ready + s.pending > 0)").get().total,
     mostViewed: rank.all("view", from, latest),

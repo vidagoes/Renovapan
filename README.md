@@ -15,7 +15,25 @@ npm.cmd start
 
 Abra `http://127.0.0.1:8080/` para o site e `http://127.0.0.1:8080/admin` para o painel. Um banco novo começa vazio e as migrações são aplicadas ao iniciar.
 
-## Configurar o acesso do proprietário
+## Protótipo local
+
+Em um terminal PowerShell 7, ative o modo, escolha a senha e inicie o servidor:
+
+```powershell
+$env:RENOVAPAN_PROTOTIPO = '1'
+$env:RENOVAPAN_ADMIN_PASSWORD = Read-Host 'Senha de demonstração (mínimo 8 caracteres)' -MaskInput
+try {
+  npm.cmd run admin:setup -- proprietario
+  if ($LASTEXITCODE -ne 0) { throw 'Confira o usuário e a senha.' }
+} finally {
+  Remove-Item Env:RENOVAPAN_ADMIN_PASSWORD
+}
+npm.cmd start
+```
+
+Entre em `/admin` com `proprietario` e a senha escolhida. Repita a configuração pelo terminal para trocar a senha. O modo usa o banco separado `.renovapan/prototipo.sqlite` e aceita somente acesso HTTP local em loopback. A inicialização é recusada com `NODE_ENV=production`, origem pública ou um caminho definido em `RENOVAPAN_DB`. Para voltar ao modo normal, remova `RENOVAPAN_PROTOTIPO` do ambiente e reinicie.
+
+## Configurar o acesso do proprietário no modo normal
 
 O servidor precisa de uma chave de criptografia persistente em `RENOVAPAN_TOTP_KEY`. Gere 32 bytes aleatórios em hexadecimal e guarde a chave em um gerenciador de segredos, separada do banco e dos backups. Injete a mesma chave ao iniciar ou reiniciar o serviço. Para uma sessão local descartável no PowerShell 7:
 

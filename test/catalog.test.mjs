@@ -210,6 +210,9 @@ test("API com banco persistente: catálogo, estoque, segurança e indicadores", 
   assert.deepEqual(repeat.data, reserve.data);
   assert.equal((await action(r1, { ...reservation, revision: 2 }, key)).status, 409);
   assert.equal((await get(id)).data.product.variants[1].pending, 2);
+  const reservedDashboard = (await api("/api/admin/dashboard", { session: true })).data;
+  assert.equal(reservedDashboard.reservedUnits, 1);
+  assert.equal(reservedDashboard.stages.find(row => row.technical === "repair").total, 1);
   assert.equal((await action(r1, { kind: "cancel", revision: 2 })).status, 200);
   assert.equal((await get(id)).data.product.variants[1].pending, 3);
   assert.equal((await action(r1, { kind: "cancel", revision: 3 })).status, 409);
@@ -261,6 +264,7 @@ test("API com banco persistente: catálogo, estoque, segurança e indicadores", 
     assert.equal(summary.financial.gross, 650000);
     assert.equal(summary.financial.incomplete, 1);
     assert.equal(summary.soldOut, 1);
+    assert.equal(summary.reservedUnits, 0);
     assert.equal(summary.mostViewed[0].id, id);
     assert.equal(summary.mostDemanded[0].total, 3);
     assert.equal(summary.outOfStockInterest[0].id, zero.data.id);
@@ -302,29 +306,48 @@ test("API com banco persistente: catálogo, estoque, segurança e indicadores", 
 
 async function checkProductScreen(product, red, grey, zero = false) {
   const handlers = {};
-  const root = { innerHTML: "", addEventListener: (name, fn) => { handlers[name] = fn; }, querySelector: () => ({ focus() {} }) };
+  const root = {
+    innerHTML: "", addEventListener: (name, fn) => { handlers[name] = fn; },
+    querySelector: () => ({ focus() {} }), querySelectorAll: () => [colorQuote]
+  };
   const stock = { innerHTML: "" };
   const photos = { innerHTML: "" };
+  const qty = {};
+  const notice = {};
+  const direct = {};
+  const colorQuote = { dataset: { quoteVariant: grey } };
   const window = { RenovapanAPI: { get: async () => ({ product }), track() {} } };
   const context = {
     window, URLSearchParams, location: { search: "?id=" + product.id },
-    document: { body: { dataset: {} }, getElementById: id => ({ "product-detail": root, "product-stock": stock, "product-photos": photos }[id]) }
+    document: { body: { dataset: {} }, getElementById: id => ({
+      "product-detail": root, "product-stock": stock, "product-photos": photos,
+      "detail-qty-value": qty, "detail-qty-notice": notice, "product-whatsapp": direct
+    }[id]) }
   };
   runInNewContext(readFileSync(new URL("../js/components.js", import.meta.url), "utf8"), context);
   await runInNewContext(readFileSync(new URL("../js/equipamento.js", import.meta.url), "utf8"), context);
   assert(stock.innerHTML.includes('data-variant="' + grey + '" aria-pressed="false" disabled'));
   assert(stock.innerHTML.includes("Cinza · Esgotada"));
   assert.match(decodeURIComponent(stock.innerHTML), /Cor de interesse: Cinza/);
+  assert.match(stock.innerHTML, /Consultar esta cor/);
   if (zero) {
+    assert.match(stock.innerHTML, /Total do equipamento: <strong>0 unidades livres/);
     assert.match(stock.innerHTML, /Sem estoque|Consultar possibilidade de encomenda/);
     assert.match(decodeURIComponent(stock.innerHTML), /Situação: sem estoque/);
   } else {
+    assert.match(stock.innerHTML, /Total do equipamento: <strong>6 unidades livres/);
+    assert.match(stock.innerHTML, /2 pronta entrega · 1 sob encomenda/);
     assert.match(stock.innerHTML, /Pronta entrega · 2/);
     assert.match(stock.innerHTML, /Sob encomenda · 1/);
     handlers.click({ target: { closest: selector => selector === "[data-variant]:enabled" ? { dataset: { variant: red } } : null } });
     assert.match(stock.innerHTML, /Sob encomenda · 3/);
     assert.doesNotMatch(stock.innerHTML, /Pronta entrega · /);
     assert.match(decodeURIComponent(stock.innerHTML), /Cor de interesse: Vermelha/);
+    for (let i = 0; i < 3; i++) handlers.click({ target: { closest: selector => selector === "#detail-qty-increase" ? {} : null } });
+    assert.equal(qty.textContent, "4");
+    assert.match(notice.textContent, /1 unidade acima do saldo/);
+    assert.match(new URL(direct.href).searchParams.get("text"), /Cor de interesse: Vermelha.*Quantidade desejada: 4/);
+    assert.match(new URL(colorQuote.href).searchParams.get("text"), /Cor de interesse: Cinza.*Quantidade desejada: 4/);
   }
 }
 

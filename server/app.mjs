@@ -12,6 +12,7 @@ import { listDemands, saveDemand } from "./demands.mjs";
 import { openDatabase } from "./db.mjs";
 import { quantity, RequestError } from "./inventory.mts";
 import { dashboard, rateLimit, track } from "./metrics.mjs";
+import { assertPrototype, runtime } from "./runtime.mjs";
 import { privateReport } from "./reports.mjs";
 import { closeLegacy, legacyStock, listUnits, saveUnit, unitAction, unitDetails } from "./units.mjs";
 
@@ -75,7 +76,7 @@ function headers(response) {
   response.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
 }
 
-async function staticFile(pathname, request, response) {
+async function staticFile(pathname, request, response, prototype) {
   if (pathname === "/") pathname = "/index.html";
   if (pathname === "/admin" || pathname === "/admin/") pathname = "/admin/index.html";
   const allowed = pages.has(pathname) || pathname === "/admin/index.html"
@@ -88,6 +89,9 @@ async function staticFile(pathname, request, response) {
     if (error.code === "ENOENT" || error.code === "EISDIR") throw new RequestError(404, "Arquivo não encontrado.");
     throw error;
   }
+  if (prototype && pathname === "/admin/index.html") {
+    data = Buffer.from(data.toString("utf8").replace('<body class="admin-body">', '<body class="admin-body" data-prototype="true">'));
+  }
   response.writeHead(200, { "Content-Type": type, "Content-Length": data.length });
   response.end(request.method === "HEAD" ? undefined : data);
 }
@@ -99,7 +103,8 @@ function image(db, id, admin, request, response) {
   response.end(request.method === "HEAD" ? undefined : found.body);
 }
 
-export function createApp(db, { origin, totpEncryptionKey = totpKey() } = {}) {
+export function createApp(db, { origin, totpEncryptionKey = totpKey(), prototype = false } = {}) {
+  if (prototype) assertPrototype(origin);
   const expected = new URL(origin);
   const secure = expected.protocol === "https:";
   if (!secure && (expected.protocol !== "http:" || !["localhost", "127.0.0.1", "[::1]"].includes(expected.hostname))) {
@@ -115,6 +120,9 @@ export function createApp(db, { origin, totpEncryptionKey = totpKey() } = {}) {
     headers(response);
     try {
       if (request.headers.host !== expected.host) throw new RequestError(400, "Endereço inválido.");
+      if (prototype && Object.keys(request.headers).some(name => name === "forwarded" || name.startsWith("x-forwarded-"))) {
+        throw new RequestError(403, "O modo protótipo não aceita acesso por proxy.");
+      }
       const url = new URL(request.url, expected.origin);
       const pathname = decodeURIComponent(url.pathname);
       const method = request.method;
@@ -151,25 +159,26 @@ export function createApp(db, { origin, totpEncryptionKey = totpKey() } = {}) {
         const key = clientKey(request);
         if (!allowLogin("total", 30, 60000) || !allowLogin(key, 8, 900000)) throw new RequestError(429, "Muitas tentativas. Tente novamente em alguns minutos.");
         const data = await jsonBody(request);
-        const token = authenticate(db, data.username, data.password, data.otp, totpEncryptionKey);
-        if (!token) throw new RequestError(401, "Credenciais inválidas. Confira a senha e o código, se ativado.");
-        endSession(db, sessionToken(request, secure));
-        response.setHeader("Set-Cookie", sessionCookie(token, secure));
+        const token = authenticate(db, data.username, data.password, data.otp, totpEncryptionKey, prototype);
+        if (!token) throw new RequestError(401, prototype ? "Usuário ou senha inválidos." : "Credenciais inválidas. Confira a senha e o código, se ativado.");
+        endSession(db, sessionToken(request, secure, prototype), prototype);
+        response.setHeader("Set-Cookie", sessionCookie(token, secure, prototype));
         return json(response, 200, { ok: true });
       }
       if (pathname.startsWith("/api/admin/")) {
-        const token = sessionToken(request, secure);
-        const owner = sessionOwner(db, token);
+        const token = sessionToken(request, secure, prototype);
+        const owner = sessionOwner(db, token, prototype);
         if (!owner) throw new RequestError(401, "Entre no painel para continuar.");
         if (method === "GET" && pathname === "/api/admin/session") {
           return json(response, 200, { username: owner.username, totpEnabled: Boolean(owner.totpEnabled), totpAvailable: Boolean(totpEncryptionKey) });
         }
         if (method === "POST" && pathname === "/api/admin/logout") {
-          endSession(db, token);
-          response.setHeader("Set-Cookie", sessionCookie(null, secure));
+          endSession(db, token, prototype);
+          response.setHeader("Set-Cookie", sessionCookie(null, secure, prototype));
           return response.writeHead(204).end();
         }
         if (method === "POST" && ["/api/admin/totp/begin", "/api/admin/totp/confirm"].includes(pathname)) {
+          if (prototype) throw new RequestError(404, "Operação não encontrada.");
           if (!allowEnrollment(owner.username, 12, 600000)) throw new RequestError(429, "Muitas tentativas de ativação. Tente mais tarde.");
           const { password, otp } = await jsonBody(request);
           if (pathname.endsWith("/begin")) return json(response, 200, beginTotp(db, token, password, totpEncryptionKey));
@@ -177,7 +186,7 @@ export function createApp(db, { origin, totpEncryptionKey = totpKey() } = {}) {
           response.setHeader("Set-Cookie", sessionCookie(renewed, secure));
           return json(response, 200, { totpEnabled: true });
         }
-        if (!owner.totpEnabled) throw new RequestError(403, "Ative o segundo fator para acessar os dados do painel.");
+        if (!prototype && !owner.totpEnabled) throw new RequestError(403, "Ative o segundo fator para acessar os dados do painel.");
         if (method === "GET") {
           if (pathname === "/api/admin/products") return json(response, 200, { products: products(db, { admin: true }) });
           if (pathname === "/api/admin/units") return json(response, 200, { units: listUnits(db), legacy: legacyStock(db) });
@@ -206,7 +215,8 @@ export function createApp(db, { origin, totpEncryptionKey = totpKey() } = {}) {
         if (method === "POST" || method === "PUT") {
           const upload = pathname === "/api/admin/media" && method === "POST";
           const data = upload ? await body(request, mediaLimit) : await jsonBody(request);
-          if (!sessionOwner(db, token)?.totpEnabled) throw new RequestError(401, "A sessão expirou.");
+          const active = sessionOwner(db, token, prototype);
+          if (!active || (!prototype && !active.totpEnabled)) throw new RequestError(401, "A sessão expirou.");
           if (upload) return json(response, 201, storeImage(db, request.headers["content-type"], data));
           const actor = owner.username;
           const key = request.headers["idempotency-key"];
@@ -237,7 +247,7 @@ export function createApp(db, { origin, totpEncryptionKey = totpKey() } = {}) {
       if (pathname.startsWith("/api/") || (method !== "GET" && method !== "HEAD")) {
         throw new RequestError(404, "Operação não encontrada.");
       }
-      await staticFile(pathname, request, response);
+      await staticFile(pathname, request, response, prototype);
     } catch (error) {
       if (response.headersSent || response.destroyed) return;
       if (error instanceof RequestError) return json(response, error.status, { error: error.message });
@@ -250,10 +260,9 @@ export function createApp(db, { origin, totpEncryptionKey = totpKey() } = {}) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const port = Number(process.env.PORT || 8080);
-  const origin = process.env.RENOVAPAN_ORIGIN || "http://127.0.0.1:" + port;
-  const db = openDatabase();
-  const app = createApp(db, { origin });
+  const { port, origin, database, prototype } = runtime();
+  const db = openDatabase(database);
+  const app = createApp(db, { origin, prototype });
   const host = origin.startsWith("https:") ? process.env.RENOVAPAN_HOST || "127.0.0.1" : "127.0.0.1";
   app.listen(port, host, () => console.log("RENOVAPAN disponível em " + origin));
   for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => app.close(() => db.close()));

@@ -1,6 +1,7 @@
 
 (function () {
   const byId = id => document.getElementById(id);
+  const prototype = document.body.dataset.prototype === "true";
   const escape = value => String(value ?? "").replace(/[&<>"']/g, character => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
   })[character]);
@@ -14,6 +15,11 @@
   let dashboardRequest = 0;
   let historyRequest = 0;
   let authenticated = false;
+  if (prototype) {
+    byId("login-otp").hidden = true;
+    byId("login").elements.otp.disabled = true;
+    document.querySelector('[data-tab="security"]').hidden = true;
+  }
   const operations = window.RenovapanOperations({ request, run, status, escape, option, money, day, photoField, imageEditor, catalog: () => products });
 
   function status(message, error = false) {
@@ -155,7 +161,7 @@
       + '<label>Visibilidade<select name="visibility">' + Object.entries(visibility).map(([value, label]) => option(value, label, p.visibility === value)).join("") + '</select></label></div>'
       + '<label><input type="checkbox" name="showPrice"' + (p.showPrice ? ' checked' : '') + ' /> Exibir preço no catálogo</label>'
       + '<label><input type="checkbox" name="featured"' + (p.featured ? ' checked' : '') + ' /> Mostrar nos destaques da página inicial</label>'
-      + photoField("Fotos gerais") + '<button type="submit" class="button button--primary">Salvar equipamento</button></form>'
+      + photoField("Fotos gerais", true) + '<button type="submit" class="button button--primary">Salvar equipamento</button></form>'
       + (product ? '<section class="admin-card admin-editor-section"><div class="admin-heading"><h2>Cores e quantidades</h2>'
         + '<button type="button" id="add-variant" class="button button--outline">Adicionar cor</button></div><div id="variant-list"></div><div id="variant-editor"></div></section>' : '');
     const form = byId("edit-product");
@@ -231,7 +237,7 @@
     editor.innerHTML = '<form id="edit-variant"><div class="admin-fields">'
       + '<label>Nome da cor<input name="color" maxlength="70" value="' + escape(variant?.color) + '" required /></label>'
       + '<label>Código da cor (opcional)<input name="hex" maxlength="7" placeholder="#DB1A22" value="' + escape(variant?.hex) + '" /></label></div>'
-      + photoField("Fotos desta cor") + '<button type="submit" class="button button--primary">Salvar cor</button>'
+      + photoField("Fotos desta cor", true) + '<button type="submit" class="button button--primary">Salvar cor</button>'
       + (variant ? ' <button id="edit-stock" type="button" class="button button--outline">Cadastrar máquina desta cor</button>' : '') + '</form>';
     const form = byId("edit-variant");
     const images = imageEditor(form, variant?.images || []);
@@ -273,7 +279,9 @@
         ["Vendas registradas", data.totals.sales], ["Valor total das vendas", money(data.totals.amountCents)],
         ["Custos no período", money(data.totals.costsCents)], ["Resultado bruto estimado das vendas", money(data.financial.gross)],
         ["Procuras registradas", data.totals.demands], ["Equipamentos cadastrados", data.products], ["Unidades prontas", data.inventory.ready],
-        ["Unidades sob encomenda", data.inventory.pending], ["Publicados sem estoque", data.soldOut]
+        ["Unidades sob encomenda", data.inventory.pending],
+        ["Unidades em reforma", data.stages.find(row => row.technical === "repair")?.total || 0],
+        ["Unidades reservadas", data.reservedUnits], ["Publicados sem estoque", data.soldOut]
       ];
       const rank = entries => entries.length ? '<ol>' + entries.map(r => '<li>' + escape(r.name) + ' · ' + r.total + '</li>').join("") + '</ol>' : '<p class="admin-muted">Ainda não há eventos.</p>';
       container.innerHTML = '<dl class="admin-kpis">' + metrics.map(([label, value]) => '<div><dt>' + label + '</dt><dd>' + escape(value) + '</dd></div>').join("")
@@ -371,8 +379,9 @@
     byId("login").hidden = true;
     byId("workspace").hidden = false;
     byId("logout").hidden = false;
-    byId("admin-nav").hidden = !session.totpEnabled;
-    if (session.totpEnabled) {
+    const canAccess = prototype || session.totpEnabled;
+    byId("admin-nav").hidden = !canAccess;
+    if (canAccess) {
       await refresh();
       showTab("dashboard");
     } else showTab("security");
