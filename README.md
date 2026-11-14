@@ -4,7 +4,7 @@ Site institucional e catálogo com painel privado para o proprietário. O servid
 
 ## Rodar localmente
 
-No checkout da branch `codex/ajustes-davis`, com Node.js 24 ou superior:
+No checkout do projeto, com Node.js 24 ou superior:
 
 ```powershell
 npm.cmd ci
@@ -13,11 +13,17 @@ npm.cmd test
 npm.cmd start
 ```
 
-Abra `http://127.0.0.1:8080/` para o site e `http://127.0.0.1:8080/admin` para o painel. O banco começa vazio e as migrations são aplicadas ao iniciar. A prévia aberta pelo Codex usa a porta 4175.
+Abra `http://127.0.0.1:8080/` para o site e `http://127.0.0.1:8080/admin` para o painel. Um banco novo começa vazio e as migrações são aplicadas ao iniciar.
 
 ## Configurar o acesso do proprietário
 
-No mesmo checkout, execute em PowerShell 7:
+O servidor precisa de uma chave de criptografia persistente em `RENOVAPAN_TOTP_KEY`. Gere 32 bytes aleatórios em hexadecimal e guarde a chave em um gerenciador de segredos, separada do banco e dos backups. Injete a mesma chave ao iniciar ou reiniciar o serviço. Para uma sessão local descartável no PowerShell 7:
+
+```powershell
+$env:RENOVAPAN_TOTP_KEY = [Convert]::ToHexString([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLowerInvariant()
+```
+
+Use o mesmo banco do servidor e execute em PowerShell 7:
 
 ```powershell
 $env:RENOVAPAN_ADMIN_PASSWORD = Read-Host 'Senha do proprietário (mínimo 14 caracteres)' -MaskInput
@@ -28,7 +34,9 @@ try {
 }
 ```
 
-Use o usuário `proprietario` (ou o usuário que você informar) e a senha definida para entrar no painel administrativo (`/admin`). Para alterar a senha ou recuperar o acesso, basta executar o mesmo comando novamente com a nova senha. A configuração substitui a conta existente e revoga as sessões ativas. O comando requer acesso ao terminal do ambiente que hospeda o banco.
+Escolha uma frase-senha longa e variada. Entre em `/admin` com o usuário e a senha definidos. Em **Segurança**, confirme a senha, copie a chave para um aplicativo autenticador TOTP (seis dígitos, 30 segundos) e confirme com o código atual. Enquanto o segundo fator estiver desativado, o painel só permite a configuração de segurança. Depois de ativar, use o código do aplicativo nos próximos logins.
+
+Para trocar a senha ou recuperar o acesso após a perda do autenticador, execute novamente `npm.cmd run admin:setup -- proprietario` no terminal do servidor, com a nova senha. O comando redefine as credenciais, revoga as sessões e exige nova ativação do segundo fator antes de liberar o painel. Se perder a chave de criptografia, configure uma nova no serviço e complete a recuperação local. Faça backup antes da atualização. A migração encerra as sessões antigas e usa a chave configurada para criptografar eventuais segredos TOTP de versões anteriores.
 
 ## Operar o painel
 
@@ -36,10 +44,10 @@ Use o usuário `proprietario` (ou o usuário que você informar) e a senha defin
 2. Salve e adicione as cores. Em **Máquinas e estoque**, cadastre cada máquina real com código único e etapa inicial. Somente máquinas livres compõem o estoque. A etapa Pronta entrega aparece como pronta; as demais aparecem como sob encomenda.
 3. Volte ao equipamento e escolha **Publicado**. Use **Oculto** ou **Arquivado** para retirá-lo do catálogo. Um produto publicado com estoque zero continua visível e aceita consultas pelo WhatsApp.
 4. Abra a ficha da máquina para mudar a etapa, reservar, vender, liberar, arquivar ou corrigir uma operação. Registre custos e consulte o resultado bruto estimado na ficha financeira. Fotos da unidade ficam privadas por padrão e podem ser publicadas com a identificação de antes, depois ou referência.
-5. Registre demandas em **Máquinas procuradas**. Na visão geral, veja os indicadores de 7, 30 ou 90 dias. A medição é opcional e respeita GPC e DNT. Visitas são contadas por aba com medição habilitada. Visualizações, cliques, procuras e vendas são métricas separadas.
+5. Registre demandas em **Máquinas procuradas**. Na visão geral, veja os indicadores de 7, 30 ou 90 dias. A medição é opcional e respeita GPC e DNT. Visitas são contadas por aba com medição habilitada. O painel separa cliques diretos de produtos, cliques para cotar listas e a soma de equipamentos distintos por lista consultada. Esses cliques medem intenção de consulta.
 6. Em **Exportações**, abra o catálogo comercial e selecione **Imprimir ou salvar em PDF**. Baixe os relatórios privados em CSV com filtros de produto e datas. Inventário e ficha financeira usam a última atualização da unidade para o filtro de data. Vendas e procuras usam a data do registro comercial.
 
-O preço interno aparece somente no painel. Informe um preço público separado para exibi-lo no catálogo. O botão público abre a conversa no WhatsApp com equipamento, código, cor e condição.
+O preço interno aparece somente no painel. Informe um preço público separado para exibi-lo no catálogo. A Lista de orçamento permite consultar vários equipamentos em uma única mensagem. O site confere o catálogo antes de abrir o WhatsApp, sinaliza divergências e informa quais quantidades dependem de confirmação comercial. Vendas e reservas são registradas pelo proprietário.
 
 ## Conciliação de bancos anteriores
 

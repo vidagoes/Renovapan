@@ -2,305 +2,215 @@
   const CART_KEY = "renovapan_cart_v1";
   const CUSTOMER_KEY = "renovapan_cart_customer_v1";
   const MAX_QTY = 99;
+  const conditions = {
+    ready: "Pronta entrega",
+    pending: "Sob encomenda",
+    future: "Consulta de disponibilidade futura",
+    any: "A combinar"
+  };
   const listeners = new Set();
-  const catalogRegistry = new Map();
+  const catalog = new Map();
+  let revision = 0;
 
-  function sanitizeQuantity(value) {
-    const num = Number.parseInt(value, 10);
-    if (!Number.isFinite(num) || num < 1) return 0;
-    return Math.min(num, MAX_QTY);
+  function quantity(value) {
+    const number = Number(value);
+    return Number.isInteger(number) && number >= 1 ? Math.min(number, MAX_QTY) : 0;
   }
 
   function readStorage(storage, key, fallback) {
-    try {
-      const raw = storage.getItem(key);
-      return raw ? JSON.parse(raw) : fallback;
-    } catch {
-      return fallback;
-    }
+    try { return JSON.parse(window[storage].getItem(key)) ?? fallback; }
+    catch { return fallback; }
   }
 
   function writeStorage(storage, key, value) {
-    try {
-      storage.setItem(key, JSON.stringify(value));
-    } catch {
-      // Ignore storage quota or privacy mode errors; in-memory state continues to work.
-    }
+    try { window[storage].setItem(key, JSON.stringify(value)); } catch {}
   }
+
+  function keyFor(id, { variantId, color, condition } = {}) {
+    return JSON.stringify([id, variantId || "", variantId ? "" : color || "", Object.hasOwn(conditions, condition) ? condition : "any"]);
+  }
+
+  const saved = readStorage("localStorage", CART_KEY, []);
+  let items = (Array.isArray(saved) ? saved : []).flatMap(entry => {
+    if (typeof entry?.id !== "string" || !entry.id || !quantity(entry.quantity)) return [];
+    return [{
+      id: entry.id, name: typeof entry.name === "string" ? entry.name : "",
+      variantId: typeof entry.variantId === "string" ? entry.variantId : "",
+      color: typeof entry.color === "string" ? entry.color : "",
+      condition: Object.hasOwn(conditions, entry.condition) ? entry.condition : "any",
+      quantity: quantity(entry.quantity),
+      snapshot: typeof entry.snapshot === "string" ? entry.snapshot : ""
+    }];
+  });
+  let customer = {};
+  setCustomer(readStorage("sessionStorage", CUSTOMER_KEY, {}));
 
   function registerProducts(products) {
-    if (!Array.isArray(products)) return;
-    for (const product of products) {
-      if (product && product.id) {
-        catalogRegistry.set(product.id, product);
-      }
-    }
+    for (const product of products) catalog.set(product.id, product);
   }
 
-  function findProduct(productId) {
-    if (!productId) return null;
-    if (catalogRegistry.has(productId)) return catalogRegistry.get(productId);
-    if (window.RENOVAPAN_DATA && Array.isArray(window.RENOVAPAN_DATA.products)) {
-      const found = window.RENOVAPAN_DATA.products.find((p) => p.id === productId);
-      if (found) return found;
-    }
-    return null;
+  function lookup(entry) {
+    const product = catalog.get(entry.id);
+    if (!product) return { outcome: "product" };
+    const variant = entry.variantId ? product.variants.find(v => v.id === entry.variantId)
+      : entry.color ? product.variants.find(v => v.color === entry.color) : null;
+    if ((entry.variantId || entry.color) && !variant) return { product, outcome: "color" };
+    return { product, variant, stock: variant || product.stock };
   }
 
-  let items = readStorage(window.localStorage, CART_KEY, []);
-  if (!Array.isArray(items)) items = [];
-  items = items
-    .map((entry) => {
-      const id = typeof entry?.id === "string" ? entry.id : "";
-      const quantity = sanitizeQuantity(entry?.quantity);
-      if (!id || quantity <= 0) return null;
-      return {
-        id,
-        name: typeof entry.name === "string" ? entry.name : "",
-        category: typeof entry.category === "string" ? entry.category : "",
-        brand: typeof entry.brand === "string" ? entry.brand : "",
-        model: typeof entry.model === "string" ? entry.model : "",
-        code: typeof entry.code === "string" ? entry.code : "",
-        color: typeof entry.color === "string" ? entry.color : "",
-        image: typeof entry.image === "string" ? entry.image : "",
-        priceCents: typeof entry.priceCents === "number" ? entry.priceCents : null,
-        quantity
-      };
-    })
-    .filter(Boolean);
-
-  let customer = readStorage(window.sessionStorage, CUSTOMER_KEY, {});
-  if (!customer || typeof customer !== "object") customer = {};
-  customer = {
-    nome: typeof customer.nome === "string" ? customer.nome : "",
-    empresa: typeof customer.empresa === "string" ? customer.empresa : "",
-    observacao: typeof customer.observacao === "string" ? customer.observacao : ""
-  };
+  function snapshot({ product, variant, stock, outcome }) {
+    return outcome || JSON.stringify([product.name, product.code, product.brand, product.model, variant?.id, variant?.color, stock.ready, stock.pending]);
+  }
 
   function notify() {
-    const snapshot = getItems();
-    listeners.forEach((listener) => {
-      try {
-        listener(snapshot);
-      } catch {
-        // Keep other subscribers updating cleanly.
-      }
-    });
-    document.dispatchEvent(new CustomEvent("renovapan:cart-change", { detail: { items: snapshot } }));
+    for (const listener of listeners) listener();
   }
 
   function persistItems() {
-    writeStorage(window.localStorage, CART_KEY, items);
+    revision++;
+    writeStorage("localStorage", CART_KEY, items);
     notify();
   }
 
   function getItems() {
-    return items.map((entry) => {
-      const fromRegistry = findProduct(entry.id);
-      const product = {
-        id: entry.id,
-        name: entry.name || fromRegistry?.name || entry.id,
-        shortName: fromRegistry?.shortName || entry.name || entry.id,
-        category: entry.category || fromRegistry?.category || "",
-        brand: entry.brand || fromRegistry?.brand || "",
-        model: entry.model || fromRegistry?.model || "",
-        code: entry.code || fromRegistry?.code || "",
-        color: entry.color || "",
-        image: entry.image || fromRegistry?.images?.[0] || fromRegistry?.variants?.[0]?.images?.[0] || "",
-        priceCents: entry.priceCents ?? fromRegistry?.publicPriceCents ?? null
+    return items.map(entry => {
+      const { product, variant, stock, outcome } = lookup(entry);
+      // A missing entry in an incomplete page cache is not proof of removal.
+      const issue = entry.snapshot === "product" || entry.snapshot === "color"
+        ? entry.snapshot : product && outcome === "color" ? outcome : "";
+      const name = product?.name || entry.name || "Equipamento";
+      const color = variant?.color || entry.color;
+      const checked = stock && !issue && entry.snapshot === snapshot({ product, variant, stock });
+      const available = checked ? (entry.condition === "ready" || entry.condition === "pending"
+        ? stock[entry.condition] : stock.ready + stock.pending) : null;
+      return {
+        key: keyFor(entry.id, entry), quantity: entry.quantity, issue,
+        product: { id: entry.id, name, color, code: product?.code, brand: product?.brand,
+          model: product?.model, category: product?.category, image: variant?.images?.[0] || product?.images?.[0] },
+        condition: conditions[entry.condition],
+        stock: checked ? { ready: stock.ready, pending: stock.pending } : null,
+        excess: available === null ? 0 : Math.max(0, entry.quantity - available)
       };
-      return { product, quantity: entry.quantity };
     });
   }
 
-  function getItemQuantity(productId, color = "") {
-    const entry = items.find((e) => e.id === productId && (!color || e.color === color));
-    return entry ? entry.quantity : 0;
+  function getItemQuantity(id, options) {
+    return items.find(entry => keyFor(entry.id, entry) === keyFor(id, options))?.quantity || 0;
   }
 
-  function getTotalCount() {
-    return items.reduce((sum, entry) => sum + entry.quantity, 0);
-  }
-
-  function addItem(productOrId, quantity = 1, options = {}) {
-    const qtyToAdd = sanitizeQuantity(quantity);
-    if (qtyToAdd <= 0) return false;
-
-    let id = "";
-    let name = "";
-    let category = "";
-    let brand = "";
-    let model = "";
-    let code = "";
-    let color = options.color || "";
-    let image = options.image || "";
-    let priceCents = null;
-
-    if (typeof productOrId === "object" && productOrId !== null) {
-      id = productOrId.id || "";
-      name = productOrId.name || "";
-      category = productOrId.category || "";
-      brand = productOrId.brand || "";
-      model = productOrId.model || "";
-      code = productOrId.code || "";
-      color = color || productOrId.selectedColor || "";
-      image = image || productOrId.images?.[0] || productOrId.variants?.[0]?.images?.[0] || "";
-      priceCents = productOrId.publicPriceCents ?? productOrId.priceCents ?? null;
-      catalogRegistry.set(id, productOrId);
-    } else if (typeof productOrId === "string") {
-      id = productOrId;
-      const found = findProduct(id);
-      if (!found) return false;
-      name = found.name || "";
-      category = found.category || "";
-      brand = found.brand || "";
-      model = found.model || "";
-      code = found.code || "";
-      color = color || found.selectedColor || "";
-      image = image || found.images?.[0] || found.variants?.[0]?.images?.[0] || "";
-      priceCents = found.publicPriceCents ?? found.priceCents ?? null;
-    }
-
-    if (!id) return false;
-
-    const existing = items.find((entry) => entry.id === id && (!color || entry.color === color));
-    if (existing) {
-      existing.quantity = Math.min(existing.quantity + qtyToAdd, MAX_QTY);
-      if (name && !existing.name) existing.name = name;
-      if (category && !existing.category) existing.category = category;
-      if (code && !existing.code) existing.code = code;
-      if (color && !existing.color) existing.color = color;
-      if (image && !existing.image) existing.image = image;
-    } else {
-      items.push({
-        id,
-        name,
-        category,
-        brand,
-        model,
-        code,
-        color,
-        image,
-        priceCents,
-        quantity: qtyToAdd
-      });
+  function addItem(productOrId, requested = 1, options = {}) {
+    const product = typeof productOrId === "string" ? catalog.get(productOrId) : productOrId;
+    const units = quantity(requested);
+    if (!product?.id || !units) return false;
+    registerProducts([product]);
+    const variant = options.variantId ? product.variants.find(v => v.id === options.variantId)
+      : options.color ? product.variants.find(v => v.color === options.color) : null;
+    if ((options.variantId || options.color) && !variant) return false;
+    const entry = {
+      id: product.id, name: product.name, variantId: variant?.id || "", color: variant?.color || "",
+      condition: Object.hasOwn(conditions, options.condition) ? options.condition : "any", quantity: units
+    };
+    const existing = items.find(item => keyFor(item.id, item) === keyFor(entry.id, entry));
+    if (existing) existing.quantity = Math.min(MAX_QTY, existing.quantity + units);
+    else {
+      entry.snapshot = snapshot({ product, variant, stock: variant || product.stock });
+      items.push(entry);
     }
     persistItems();
     return true;
   }
 
-  function setQuantity(productId, quantity, color = "") {
-    const nextQty = sanitizeQuantity(quantity);
-    if (nextQty <= 0) {
-      removeItem(productId, color);
-      return;
-    }
-    const existing = items.find((entry) => entry.id === productId && (!color || entry.color === color));
-    if (existing) {
-      existing.quantity = nextQty;
-      persistItems();
-    }
-  }
-
-  function removeItem(productId, color = "") {
-    const next = items.filter((entry) => !(entry.id === productId && (!color || entry.color === color)));
-    if (next.length === items.length) return;
-    items = next;
+  function setQuantity(key, requested) {
+    const entry = items.find(item => keyFor(item.id, item) === key);
+    if (!entry) return;
+    const units = quantity(requested);
+    if (units) entry.quantity = units;
+    else items = items.filter(item => item !== entry);
     persistItems();
   }
 
-  function clear() {
-    if (items.length === 0) return;
-    items = [];
+  async function revalidate() {
+    const sequence = revision;
+    const { products } = await window.RenovapanAPI.get("/api/catalog", { cache: "no-store" });
+    if (!Array.isArray(products)) throw new Error("Catálogo indisponível.");
+    if (revision !== sequence) return { changed: true, blocked: false };
+    catalog.clear();
+    registerProducts(products);
+    let changed = false;
+    let blocked = false;
+    const reconciled = new Map();
+    for (const entry of items) {
+      const found = lookup(entry);
+      const current = snapshot(found);
+      changed ||= current !== entry.snapshot;
+      blocked ||= Boolean(found.outcome);
+      entry.snapshot = current;
+      if (found.product) entry.name = found.product.name;
+      if (found.variant) {
+        entry.variantId = found.variant.id;
+        entry.color = found.variant.color;
+      }
+      const key = keyFor(entry.id, entry);
+      if (reconciled.has(key)) {
+        const previous = reconciled.get(key);
+        previous.quantity = Math.min(MAX_QTY, previous.quantity + entry.quantity);
+        changed = true;
+      } else reconciled.set(key, entry);
+    }
+    items = [...reconciled.values()];
     persistItems();
-  }
-
-  function getCustomer() {
-    return { ...customer };
+    return { changed, blocked };
   }
 
   function setCustomer(next) {
     customer = {
-      nome: String(next?.nome ?? customer.nome).slice(0, 120),
-      empresa: String(next?.empresa ?? customer.empresa).slice(0, 120),
-      observacao: String(next?.observacao ?? customer.observacao).slice(0, 600)
+      nome: String(next?.nome ?? customer.nome ?? "").slice(0, 120),
+      empresa: String(next?.empresa ?? customer.empresa ?? "").slice(0, 120),
+      observacao: String(next?.observacao ?? customer.observacao ?? "").slice(0, 600)
     };
-    writeStorage(window.sessionStorage, CUSTOMER_KEY, customer);
+    writeStorage("sessionStorage", CUSTOMER_KEY, customer);
   }
 
-  function buildMessage(customOverride) {
-    const cartItems = getItems();
-    const info = customOverride ? { ...customer, ...customOverride } : customer;
-    const nome = (info.nome || "").trim();
-    const empresa = (info.empresa || "").trim();
-    const observacao = (info.observacao || "").trim();
+  function stockDescription(stock) {
+    const counts = "Pronta entrega: " + stock.ready + " · Sob encomenda: " + stock.pending;
+    return stock.ready + stock.pending === 0 ? "Sem estoque · " + counts : counts;
+  }
 
-    if (cartItems.length === 0) {
-      return "Olá, equipe RENOVAPAN! Gostaria de solicitar mais informações sobre os equipamentos.";
-    }
-
-    const totalUnits = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-    const modelLabel = cartItems.length === 1 ? "modelo" : "modelos";
-    const unitLabel = totalUnits === 1 ? "unidade" : "unidades";
-
+  function buildMessage() {
+    const valid = getItems().filter(item => !item.issue && item.stock);
+    if (!valid.length) return "";
     const lines = [
-      nome ? `Olá, equipe RENOVAPAN! Meu nome é *${nome}*.` : "Olá, equipe RENOVAPAN!",
-      "",
-      "Gostaria de solicitar um orçamento para os seguintes equipamentos selecionados no site:",
-      "",
-      "*Itens do pedido:*"
+      customer.nome.trim() ? "Olá, equipe RENOVAPAN! Meu nome é " + customer.nome.trim() + "." : "Olá, equipe RENOVAPAN!",
+      "", "Gostaria de solicitar uma cotação.", "", "*Equipamentos de interesse:*"
     ];
-
-    cartItems.forEach(({ product, quantity }) => {
-      const details = [];
-      if (product.category) details.push(product.category);
-      if (product.color) details.push(`Cor: ${product.color}`);
-      const detailStr = details.length ? ` (${details.join(" · ")})` : "";
-      const codeStr = product.code ? ` - Cód. ${product.code}` : "";
-      lines.push(`• ${quantity}x ${product.name}${detailStr}${codeStr}`);
-    });
-
-    lines.push("", `*Resumo:* ${totalUnits} ${unitLabel} (${cartItems.length} ${modelLabel})`);
-
-    if (empresa || observacao) {
-      lines.push("", "*Informações adicionais:*");
-      if (empresa) lines.push(`• Empresa: ${empresa}`);
-      if (observacao) lines.push(`• Observação: ${observacao}`);
+    for (const { product, quantity: units, condition, stock, excess } of valid) {
+      const title = [product.name, product.brand, product.model].filter(Boolean).join(" · ");
+      lines.push("• " + title + " · Cód. " + product.code,
+        "Cor: " + (product.color || "A definir") + " | Condição: " + condition + " | Quantidade desejada: " + units,
+        "Disponibilidade atual — " + stockDescription(stock));
+      if (stock.ready + stock.pending === 0) lines.push("Gostaria de consultar uma possível aquisição e reforma futura.");
+      else if (excess) lines.push(excess + " unidade(s) acima do saldo da condição desejada, sujeitas a confirmação comercial e possível aquisição/reforma futura.");
     }
-
-    lines.push("", "Aguardo o retorno sobre disponibilidade, prazos e condições!");
+    if (customer.empresa.trim()) lines.push("", "Empresa: " + customer.empresa.trim());
+    if (customer.observacao.trim()) lines.push("", "Observação: " + customer.observacao.trim());
+    lines.push("", "Disponibilidade, valores e prazos sujeitos a confirmação.");
     return lines.join("\n");
   }
 
-  function getWhatsAppNumber() {
-    const raw = (window.RENOVAPAN_DATA && window.RENOVAPAN_DATA.whatsappNumber) || "5511952031535";
-    return String(raw).replace(/\D/g, "");
-  }
-
-  function getWhatsAppUrl(customOverride) {
-    const number = getWhatsAppNumber();
-    const message = buildMessage(customOverride);
-    return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
-  }
-
-  function subscribe(listener) {
-    if (typeof listener === "function") listeners.add(listener);
-    return () => listeners.delete(listener);
+  async function prepareQuote() {
+    const validation = await revalidate();
+    if (validation.blocked || validation.changed || !items.length) return validation;
+    const message = buildMessage();
+    if (!message) return { blocked: true };
+    return { url: "https://wa.me/5511952031535?text=" + encodeURIComponent(message),
+      productCount: new Set(items.map(item => item.id)).size };
   }
 
   window.RenovapanCart = {
-    registerProducts,
-    getItems,
-    getItemQuantity,
-    getTotalCount,
-    addItem,
-    setQuantity,
-    removeItem,
-    clear,
-    getCustomer,
-    setCustomer,
-    buildMessage,
-    getWhatsAppUrl,
-    subscribe
+    registerProducts, getItems, getItemQuantity, addItem, setQuantity, revalidate, prepareQuote,
+    getTotalCount: () => items.reduce((sum, item) => sum + item.quantity, 0),
+    clear() { items = []; persistItems(); },
+    getCustomer: () => ({ ...customer }), setCustomer, buildMessage, stockDescription,
+    subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); }
   };
 })();

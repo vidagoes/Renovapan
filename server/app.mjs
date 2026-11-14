@@ -4,7 +4,8 @@ import { createHmac, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
 import { pathToFileURL } from "node:url";
-import { authenticate, endSession, sessionCookie, sessionOwner, sessionToken } from "./auth.mjs";
+import { authenticate, beginTotp, confirmTotp, endSession, sessionCookie, sessionOwner, sessionToken } from "./auth.mjs";
+import { totpKey } from "./totp.mjs";
 import { duplicateProduct, getImage, isId, products, record, saveProduct, saveVariant, storeImage } from "./catalog.mjs";
 import { auditHistory } from "./audit.mjs";
 import { listDemands, saveDemand } from "./demands.mjs";
@@ -98,13 +99,14 @@ function image(db, id, admin, request, response) {
   response.end(request.method === "HEAD" ? undefined : found.body);
 }
 
-export function createApp(db, { origin } = {}) {
+export function createApp(db, { origin, totpEncryptionKey = totpKey() } = {}) {
   const expected = new URL(origin);
   const secure = expected.protocol === "https:";
   if (!secure && (expected.protocol !== "http:" || !["localhost", "127.0.0.1", "[::1]"].includes(expected.hostname))) {
     throw new Error("Use HTTPS fora do ambiente local.");
   }
   const allowLogin = rateLimit();
+  const allowEnrollment = rateLimit();
   const allowEvent = rateLimit();
   const salt = randomBytes(32);
   const clientKey = request => createHmac("sha256", salt).update(request.socket.remoteAddress || "local").digest("hex");
@@ -142,15 +144,15 @@ export function createApp(db, { origin } = {}) {
         const key = clientKey(request);
         if (!allowEvent("total", 600, 60000) || !allowEvent(key, 80, 60000)) throw new RequestError(429, "Limite de eventos atingido.");
         const data = await jsonBody(request);
-        if (data.consent === true && (!data.productId || isId(data.productId))) track(db, data.event, data.productId);
+        if (data.consent === true && (!data.productId || isId(data.productId))) track(db, data.event, data.productId, data.productCount);
         return response.writeHead(204).end();
       }
       if (method === "POST" && pathname === "/api/admin/login") {
         const key = clientKey(request);
         if (!allowLogin("total", 30, 60000) || !allowLogin(key, 8, 900000)) throw new RequestError(429, "Muitas tentativas. Tente novamente em alguns minutos.");
         const data = await jsonBody(request);
-        const token = authenticate(db, data.username, data.password);
-        if (!token) throw new RequestError(401, "Credenciais inválidas. Verifique seu usuário e senha.");
+        const token = authenticate(db, data.username, data.password, data.otp, totpEncryptionKey);
+        if (!token) throw new RequestError(401, "Credenciais inválidas. Confira a senha e o código, se ativado.");
         endSession(db, sessionToken(request, secure));
         response.setHeader("Set-Cookie", sessionCookie(token, secure));
         return json(response, 200, { ok: true });
@@ -159,8 +161,24 @@ export function createApp(db, { origin } = {}) {
         const token = sessionToken(request, secure);
         const owner = sessionOwner(db, token);
         if (!owner) throw new RequestError(401, "Entre no painel para continuar.");
+        if (method === "GET" && pathname === "/api/admin/session") {
+          return json(response, 200, { username: owner.username, totpEnabled: Boolean(owner.totpEnabled), totpAvailable: Boolean(totpEncryptionKey) });
+        }
+        if (method === "POST" && pathname === "/api/admin/logout") {
+          endSession(db, token);
+          response.setHeader("Set-Cookie", sessionCookie(null, secure));
+          return response.writeHead(204).end();
+        }
+        if (method === "POST" && ["/api/admin/totp/begin", "/api/admin/totp/confirm"].includes(pathname)) {
+          if (!allowEnrollment(owner.username, 12, 600000)) throw new RequestError(429, "Muitas tentativas de ativação. Tente mais tarde.");
+          const { password, otp } = await jsonBody(request);
+          if (pathname.endsWith("/begin")) return json(response, 200, beginTotp(db, token, password, totpEncryptionKey));
+          const renewed = confirmTotp(db, token, otp, totpEncryptionKey);
+          response.setHeader("Set-Cookie", sessionCookie(renewed, secure));
+          return json(response, 200, { totpEnabled: true });
+        }
+        if (!owner.totpEnabled) throw new RequestError(403, "Ative o segundo fator para acessar os dados do painel.");
         if (method === "GET") {
-          if (pathname === "/api/admin/session") return json(response, 200, { username: owner.username });
           if (pathname === "/api/admin/products") return json(response, 200, { products: products(db, { admin: true }) });
           if (pathname === "/api/admin/units") return json(response, 200, { units: listUnits(db), legacy: legacyStock(db) });
           if (pathname === "/api/admin/demands") return json(response, 200, { demands: listDemands(db) });
@@ -185,15 +203,10 @@ export function createApp(db, { origin } = {}) {
         if ((method === "GET" || method === "HEAD") && adminMedia.test(pathname)) {
           return image(db, pathname.match(adminMedia)[1], true, request, response);
         }
-        if (method === "POST" && pathname === "/api/admin/logout") {
-          endSession(db, token);
-          response.setHeader("Set-Cookie", sessionCookie(null, secure));
-          return response.writeHead(204).end();
-        }
         if (method === "POST" || method === "PUT") {
           const upload = pathname === "/api/admin/media" && method === "POST";
           const data = upload ? await body(request, mediaLimit) : await jsonBody(request);
-          if (!sessionOwner(db, token)) throw new RequestError(401, "A sessão expirou.");
+          if (!sessionOwner(db, token)?.totpEnabled) throw new RequestError(401, "A sessão expirou.");
           if (upload) return json(response, 201, storeImage(db, request.headers["content-type"], data));
           const actor = owner.username;
           const key = request.headers["idempotency-key"];

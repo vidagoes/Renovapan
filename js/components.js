@@ -17,13 +17,10 @@
   }
 
   function formatAddLabel(qty) {
-    return qty > 0 ? `✓ No carrinho (${qty}) · +1` : "Adicionar ao carrinho";
+    return qty > 0 ? `✓ Na lista (${qty}) · +1` : "Adicionar à lista";
   }
 
   function productCard(product, reveal = false) {
-    if (cart && typeof cart.registerProducts === "function") {
-      cart.registerProducts([product]);
-    }
     const available = product.variants?.find(variant => (variant.ready || 0) + (variant.pending || 0) > 0);
     const image = available?.images?.[0] || product.images?.[0] || product.variants?.find(variant => variant.images?.length)?.images?.[0];
     const photoKind = product.variants?.find(variant => variant.photoKinds?.[image])?.photoKinds?.[image];
@@ -33,7 +30,9 @@
       : '<p class="catalog-photo-empty">Fotos sob consulta</p>';
 
     const color = product.selectedColor || "";
-    const qty = cart ? cart.getItemQuantity(product.id, color) : 0;
+    const variantId = product.variants.find(v => v.color === color)?.id;
+    const condition = product.selectedCondition || (available ? "any" : "future");
+    const qty = cart?.getItemQuantity(product.id, { variantId, color, condition }) || 0;
     const inCartClass = qty > 0 ? " is-in-cart" : "";
 
     return '<article class="product-card' + (reveal ? ' reveal' : '') + '" data-product-id="' + escape(product.id) + '">'
@@ -46,7 +45,8 @@
       + '<div class="product-card__footer"><span>Ver equipamento</span><b aria-hidden="true">→</b></div></div></a>'
       + '<div class="product-card__actions">'
       + '<button class="button button--primary button--full product-card__add' + inCartClass + '" type="button" data-add-to-cart="'
-      + escape(product.id) + '"' + (color ? ' data-product-color="' + escape(color) + '"' : '') + '>'
+      + escape(product.id) + '" data-product-condition="' + escape(condition) + '"' + (color ? ' data-product-color="' + escape(color)
+        + '" data-product-variant="' + escape(variantId) + '"' : '') + '>'
       + formatAddLabel(qty) + '</button>'
       + '</div></article>';
   }
@@ -82,9 +82,9 @@
             <a class="button button--primary" href="orcamento.html"${page === "orcamento" ? ' aria-current="page"' : ""}>Solicitar orçamento</a>
           </nav>
           <div class="header-actions">
-            <button class="cart-button" id="cart-toggle-btn" type="button" aria-label="Abrir carrinho de orçamento" aria-haspopup="dialog" aria-expanded="false" aria-controls="cart-drawer">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.4 10.5a1 1 0 0 0 1 .8h9.8a1 1 0 0 0 1-.8L21 7H6.2"/><circle cx="9.5" cy="19.5" r="1.4"/><circle cx="17.5" cy="19.5" r="1.4"/></svg>
-              <span class="cart-button__label">Carrinho</span>
+            <button class="cart-button" id="cart-toggle-btn" type="button" aria-label="Abrir lista de orçamento" aria-haspopup="dialog" aria-expanded="false" aria-controls="cart-drawer">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5H20 M9 12H20 M9 19H20"/><circle cx="4" cy="5" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="19" r="1"/></svg>
+              <span class="cart-button__label">Lista de orçamento</span>
               <span class="cart-button__badge" id="cart-badge" hidden>0</span>
             </button>
             <button class="menu-button" type="button" aria-expanded="false" aria-controls="main-nav" aria-label="Abrir menu"><span></span><span></span><span></span></button>
@@ -133,19 +133,20 @@
     <aside class="cart-drawer" id="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-drawer-title" hidden tabindex="-1">
       <div class="cart-drawer__header">
         <div>
-          <h2 id="cart-drawer-title">Carrinho de orçamento</h2>
+          <h2 id="cart-drawer-title">Lista de orçamento</h2>
           <p class="cart-drawer__count" id="cart-drawer-count">Nenhum item selecionado</p>
         </div>
-        <button class="cart-drawer__close" id="cart-close-btn" type="button" aria-label="Fechar carrinho">×</button>
+        <button class="cart-drawer__close" id="cart-close-btn" type="button" aria-label="Fechar lista de orçamento">×</button>
       </div>
       <div class="cart-drawer__body">
         <div class="cart-empty" id="cart-empty">
-          <span class="cart-empty__icon" aria-hidden="true">🛒</span>
-          <h3>Seu carrinho está vazio</h3>
-          <p>Adicione equipamentos do catálogo para montar seu pedido e enviar direto para o nosso WhatsApp.</p>
+          <h3>Sua lista está vazia</h3>
+          <p>Adicione equipamentos do catálogo para consultar valores e disponibilidade pelo WhatsApp.</p>
           <a class="button button--primary" href="catalogo.html">Ver equipamentos →</a>
         </div>
         <div id="cart-content" hidden>
+          <p>Esta lista serve apenas para solicitar uma cotação. Não representa compra, reserva ou garantia de disponibilidade.</p>
+          <h3>Equipamentos de interesse</h3>
           <ul class="cart-items" id="cart-items"></ul>
           <form class="cart-form" id="cart-customer-form" novalidate>
             <h3>Personalizar mensagem</h3>
@@ -169,14 +170,14 @@
         </div>
       </div>
       <div class="cart-drawer__footer" id="cart-drawer-footer" hidden>
-        <a class="button button--whatsapp button--full" id="cart-whatsapp-link" href="#" target="_blank" rel="noopener noreferrer">Finalizar e enviar no WhatsApp ↗</a>
-        <p class="cart-sent-feedback" id="cart-sent-feedback" hidden>WhatsApp aberto com seus produtos e quantidades!</p>
-        <button class="cart-clear-btn" id="cart-clear-btn" type="button">Limpar carrinho</button>
+        <button class="button button--whatsapp button--full" id="cart-whatsapp-link" type="button">Solicitar cotação pelo WhatsApp ↗</button>
+        <p id="cart-sent-feedback" role="status" hidden></p>
+        <button class="cart-clear-btn" id="cart-clear-btn" type="button">Limpar lista</button>
       </div>
     </aside>
     <div class="cart-toast" id="cart-toast" role="status" aria-live="polite" hidden>
       <span id="cart-toast-text"></span>
-      <button type="button" id="cart-toast-open">Ver carrinho</button>
+      <button type="button" id="cart-toast-open">Ver lista</button>
     </div>`;
   document.body.appendChild(drawerRoot);
 
@@ -204,6 +205,7 @@
   let pendingFocus = null;
 
   if (cart && customerForm) {
+    customerForm.addEventListener("submit", event => event.preventDefault());
     const saved = cart.getCustomer();
     customerForm.elements.nome.value = saved.nome || "";
     customerForm.elements.empresa.value = saved.empresa || "";
@@ -212,8 +214,7 @@
 
   function syncWhatsAppLinkAndPreview() {
     if (!cart) return;
-    if (whatsappLink) whatsappLink.href = cart.getWhatsAppUrl();
-    if (previewBox) previewBox.textContent = cart.buildMessage();
+    if (previewBox) previewBox.textContent = cart.buildMessage() || "Aguardando a conferência dos equipamentos no catálogo.";
   }
 
   function updateCardButtons() {
@@ -221,7 +222,7 @@
     document.querySelectorAll("[data-add-to-cart]").forEach((btn) => {
       const id = btn.dataset.addToCart;
       const color = btn.dataset.productColor || "";
-      const qty = cart.getItemQuantity(id, color);
+      const qty = cart.getItemQuantity(id, { color, variantId: btn.dataset.productVariant, condition: btn.dataset.productCondition });
       btn.classList.toggle("is-in-cart", qty > 0);
       btn.textContent = formatAddLabel(qty);
     });
@@ -239,16 +240,17 @@
     if (toggleBtn) {
       toggleBtn.setAttribute(
         "aria-label",
-        totalCount > 0 ? `Abrir carrinho de orçamento (${totalCount} ${totalCount === 1 ? "item" : "itens"})` : "Abrir carrinho de orçamento"
+        totalCount > 0 ? `Abrir lista de orçamento (${totalCount} ${totalCount === 1 ? "item" : "itens"})` : "Abrir lista de orçamento"
       );
     }
     if (countText) {
       if (totalCount === 0) {
         countText.textContent = "Nenhum item selecionado";
       } else {
-        const unitWord = totalCount === 1 ? "unidade" : "unidades";
-        const modelWord = cartItems.length === 1 ? "modelo" : "modelos";
-        countText.textContent = `${totalCount} ${unitWord} (${cartItems.length} ${modelWord})`;
+        const unitWord = totalCount === 1 ? "unidade desejada" : "unidades desejadas";
+        const models = new Set(cartItems.map(item => item.product.id)).size;
+        const modelWord = models === 1 ? "modelo" : "modelos";
+        countText.textContent = `${totalCount} ${unitWord} (${models} ${modelWord})`;
       }
     }
 
@@ -260,8 +262,7 @@
 
     if (!isEmpty) {
       itemsList.innerHTML = cartItems
-        .map(({ product, quantity }) => {
-          const itemKey = `${product.id}__${product.color || ""}`;
+        .map(({ product, quantity, key, condition, stock, excess, issue }) => {
           const thumbHtml = product.image
             ? `<img class="cart-item__img" src="${mediaPath(product.image)}" alt="${escape(product.name)}" />`
             : `<span class="cart-item__placeholder" aria-hidden="true">🥖</span>`;
@@ -272,13 +273,17 @@
           const detailsStr = detailsList.join(" · ");
 
           return `
-            <li class="cart-item" data-item-id="${escape(product.id)}" data-item-color="${escape(product.color || "")}">
+            <li class="cart-item" data-item-key="${escape(key)}">
               <a class="cart-item__thumb" href="equipamento.html?id=${encodeURIComponent(product.id)}" aria-label="Ver ${escape(product.name)}">
                 ${thumbHtml}
               </a>
               <div class="cart-item__info">
                 ${detailsStr ? `<span class="cart-item__category">${detailsStr}</span>` : ""}
                 <a class="cart-item__name" href="equipamento.html?id=${encodeURIComponent(product.id)}">${escape(product.name)}</a>
+                <p class="cart-item__category">Condição de interesse: ${escape(condition)}</p>
+                <p>Quantidade desejada: ${quantity} · ${stock ? escape(cart.stockDescription(stock)) : "Saldo a conferir"}</p>
+                ${issue ? "<p><strong>" + (issue === "product" ? "Produto indisponível no catálogo. Remova-o para continuar." : "Esta cor saiu do catálogo. Remova a linha e adicione novamente com outra cor.") + "</strong></p>" : ""}
+                ${excess ? "<p><strong>" + excess + " unidade(s) dependem de confirmação comercial e possível aquisição ou reforma futura.</strong></p>" : ""}
                 <div class="cart-item__controls">
                   <div class="qty-control qty-control--compact" role="group" aria-label="Quantidade de ${escape(product.name)}">
                     <button type="button" data-cart-action="decrease" aria-label="Diminuir quantidade de ${escape(product.name)}">−</button>
@@ -299,7 +304,7 @@
       const target = pendingFocus;
       pendingFocus = null;
       const nextBtn = itemsList.querySelector(
-        `[data-item-id="${CSS.escape(target.id)}"][data-item-color="${CSS.escape(target.color || "")}"] [data-cart-action="${CSS.escape(target.action)}"]`
+        `[data-item-key="${CSS.escape(target.key)}"] [data-cart-action="${CSS.escape(target.action)}"]`
       );
       if (nextBtn) nextBtn.focus();
       else closeBtn.focus();
@@ -323,6 +328,13 @@
     document.body.classList.add("cart-open");
     if (toggleBtn) toggleBtn.setAttribute("aria-expanded", "true");
     closeBtn.focus();
+    if (cart?.getTotalCount() && !whatsappLink.disabled) {
+      whatsappLink.disabled = true;
+      cart.revalidate().then(result => {
+        if (result.changed || result.blocked) quoteStatus("Confira a disponibilidade atual e revise as mudanças na lista.");
+      }).catch(() => quoteStatus("Não foi possível conferir o catálogo. Tente novamente ao solicitar a cotação."))
+        .finally(() => { whatsappLink.disabled = false; });
+    }
   }
 
   function closeCart() {
@@ -370,8 +382,16 @@
   toastOpen.addEventListener("click", () => openCart(toggleBtn));
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && drawer.classList.contains("is-open")) {
-      closeCart();
+    if (!drawer.classList.contains("is-open")) return;
+    if (event.key === "Escape") closeCart();
+    if (event.key !== "Tab") return;
+    const controls = [...drawer.querySelectorAll("a[href], button:enabled, input:enabled, textarea:enabled, summary")]
+      .filter(element => element.getClientRects().length);
+    const first = controls[0];
+    const last = controls.at(-1);
+    if (first && (!drawer.contains(document.activeElement) || document.activeElement === (event.shiftKey ? first : last))) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
     }
   });
 
@@ -380,39 +400,25 @@
     if (!addBtn || !cart) return;
     const productId = addBtn.dataset.addToCart;
     const color = addBtn.dataset.productColor || "";
-    if (cart.addItem(productId, 1, { color })) {
+    if (cart.addItem(productId, 1, { color, variantId: addBtn.dataset.productVariant, condition: addBtn.dataset.productCondition })) {
       const items = cart.getItems();
       const added = items.find((i) => i.product.id === productId);
       const name = added?.product?.name || "Equipamento";
-      showToast(`${name} adicionado ao carrinho`);
+      showToast(`${name} adicionado à lista`);
     }
   });
 
   itemsList.addEventListener("click", (event) => {
     const actionBtn = event.target.closest("[data-cart-action]");
     if (!actionBtn || !cart) return;
-    const itemEl = actionBtn.closest("[data-item-id]");
+    const itemEl = actionBtn.closest("[data-item-key]");
     if (!itemEl) return;
-    const productId = itemEl.dataset.itemId;
-    const color = itemEl.dataset.itemColor || "";
+    const key = itemEl.dataset.itemKey;
     const action = actionBtn.dataset.cartAction;
-    const currentQty = cart.getItemQuantity(productId, color);
-
-    if (action === "increase") {
-      pendingFocus = { id: productId, color, action };
-      cart.setQuantity(productId, currentQty + 1, color);
-    } else if (action === "decrease") {
-      if (currentQty > 1) {
-        pendingFocus = { id: productId, color, action };
-        cart.setQuantity(productId, currentQty - 1, color);
-      } else {
-        pendingFocus = { id: productId, color, action: "remove" };
-        cart.removeItem(productId, color);
-      }
-    } else if (action === "remove") {
-      pendingFocus = { id: productId, color, action: "remove" };
-      cart.removeItem(productId, color);
-    }
+    const item = cart.getItems().find(row => row.key === key);
+    if (!item) return;
+    pendingFocus = { key, action };
+    cart.setQuantity(key, action === "increase" ? item.quantity + 1 : action === "decrease" ? item.quantity - 1 : 0);
   });
 
   customerForm.addEventListener("input", () => {
@@ -429,9 +435,28 @@
     cart?.clear();
   });
 
-  whatsappLink.addEventListener("click", () => {
-    if (sentFeedback) sentFeedback.hidden = false;
-    window.RenovapanAPI?.track?.("whatsapp", "cart");
+  function quoteStatus(message) {
+    sentFeedback.textContent = message;
+    sentFeedback.hidden = false;
+  }
+
+  whatsappLink.addEventListener("click", async () => {
+    if (!cart || whatsappLink.disabled) return;
+    whatsappLink.disabled = true;
+    quoteStatus("Conferindo a lista com o catálogo…");
+    try {
+      const result = await cart.prepareQuote();
+      if (result.blocked) quoteStatus("Revise a lista e remova ou substitua os itens indisponíveis antes de continuar.");
+      else if (!result.url) quoteStatus("A disponibilidade mudou. Confira a lista e clique novamente para solicitar a cotação.");
+      else if (drawer.classList.contains("is-open")) {
+        window.RenovapanAPI?.track("quote", "", result.productCount);
+        window.location.assign(result.url);
+      }
+    } catch {
+      quoteStatus("Não foi possível atualizar a disponibilidade. Tente novamente antes de abrir o WhatsApp.");
+    } finally {
+      whatsappLink.disabled = false;
+    }
   });
 
   if (cart) {

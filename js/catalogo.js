@@ -17,6 +17,7 @@
 
   try {
     const { products } = await window.RenovapanAPI.get("/api/catalog");
+    window.RenovapanCart?.registerProducts(products);
     function options(select, values) {
       const unique = [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
       for (const value of unique) select.add(new Option(value, value));
@@ -48,7 +49,8 @@
         const availability = variants.reduce((total, v) => ({ ready: total.ready + v.ready, pending: total.pending + v.pending }), { ready: 0, pending: 0 });
         if (stock.value === "out" && availability.ready + availability.pending > 0) return [];
         if (["ready", "pending"].includes(stock.value) && !availability[stock.value]) return [];
-        return [{ ...product, variants, stock: availability, selectedColor: color.value }];
+        const selectedCondition = stock.value === "out" ? "future" : stock.value || (availability.ready + availability.pending ? "any" : "future");
+        return [{ ...product, variants, stock: availability, selectedColor: color.value, selectedCondition }];
       }).sort((a, b) => Number(b.stock.ready + b.stock.pending > 0) - Number(a.stock.ready + a.stock.pending > 0));
       grid.innerHTML = matches.map(product => window.RenovapanUI.productCard(product)).join("");
       count.textContent = matches.length;

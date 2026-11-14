@@ -29,6 +29,11 @@
   let activeImage = 0;
   let selectedQty = 1;
 
+  function quoteSelection() {
+    return selected ? { variantId: selected.id, color: selected.color, condition }
+      : { condition: "future" };
+  }
+
   function whatsapp(variant, state) {
     const description = [product.name, product.brand, product.model].filter(Boolean).join(" · ");
     const color = variant ? " Cor de interesse: " + variant.color + "." : "";
@@ -87,18 +92,17 @@
     const outMessage = selected ? '' : '<p class="product-notice">Sem unidades disponíveis no momento. Consulte a possibilidade de encomendar este equipamento. Nossa equipe poderá verificar a disponibilidade para aquisição e reforma.</p>';
     const cta = selected ? "Ver valores no WhatsApp" : "Consultar possibilidade de encomenda";
 
-    const color = selected?.color || "";
-    const inCartQty = cart ? cart.getItemQuantity(product.id, color) : 0;
+    const inCartQty = cart?.getItemQuantity(product.id, quoteSelection()) || 0;
     const addLabel = inCartQty > 0
-      ? `Adicionar ao carrinho (${inCartQty} no carrinho)`
-      : "Adicionar ao carrinho";
+      ? `Adicionar à lista (${inCartQty} na lista)`
+      : "Adicionar à lista";
     const totalCart = cart ? cart.getTotalCount() : 0;
 
     document.getElementById("product-stock").innerHTML = (colors ? '<h2 class="catalog-colors-title">Cores</h2><div class="catalog-colors">' + colors + '</div>' : '')
       + '<div class="catalog-availability" aria-live="polite">' + stockLabels(selected || product.stock) + '</div>'
       + stateOptions + outMessage
       + '<div class="product-detail__actions">'
-      +   '<div class="qty-control" role="group" aria-label="Quantidade para adicionar ao carrinho">'
+      +   '<div class="qty-control" role="group" aria-label="Quantidade desejada para a lista">'
       +     '<button type="button" id="detail-qty-decrease" aria-label="Diminuir quantidade">−</button>'
       +     '<span id="detail-qty-value" aria-live="polite">' + selectedQty + '</span>'
       +     '<button type="button" id="detail-qty-increase" aria-label="Aumentar quantidade">+</button>'
@@ -106,7 +110,7 @@
       +   '<button class="button button--primary product-detail__add" id="detail-add-to-cart" type="button">' + addLabel + '</button>'
       + '</div>'
       + '<div class="product-detail__secondary">'
-      +   '<button class="button button--outline" id="detail-open-cart" type="button"' + (totalCart > 0 ? '' : ' hidden') + '>Ver carrinho de orçamento (' + totalCart + ')</button>'
+      +   '<button class="button button--outline" id="detail-open-cart" type="button"' + (totalCart > 0 ? '' : ' hidden') + '>Ver lista de orçamento (' + totalCart + ')</button>'
       +   '<a id="product-whatsapp" class="button button--outline button--full" target="_blank" rel="noopener noreferrer" data-product-id="'
       +   escape(product.id) + '" href="' + whatsapp(selected, selected ? condition : "out") + '">' + cta + ' ↗</a>'
       + '</div>';
@@ -149,11 +153,11 @@
     }
     if (addBtn && cart) {
       const colorName = selected?.color || "";
-      const chosenImage = selected?.images?.[0] || product.images?.[0] || "";
-      if (cart.addItem(product, selectedQty, { color: colorName, image: chosenImage })) {
-        window.RenovapanUI?.showToast(`${selectedQty}x ${product.name}${colorName ? ' (' + colorName + ')' : ''} adicionado ao carrinho`);
+      if (cart.addItem(product, selectedQty, quoteSelection())) {
+        window.RenovapanUI?.showToast(`${selectedQty}x ${product.name}${colorName ? ' (' + colorName + ')' : ''} adicionado à lista`);
         selectedQty = 1;
         showStock();
+        document.getElementById("detail-add-to-cart")?.focus();
       }
     }
     if (openCartBtn) {
@@ -164,8 +168,8 @@
   root.addEventListener("change", event => {
     if (event.target.id !== "catalog-condition") return;
     condition = event.target.value;
-    const btn = document.getElementById("product-whatsapp");
-    if (btn) btn.href = whatsapp(selected, condition);
+    showStock();
+    document.getElementById("catalog-condition")?.focus();
   });
 
   if (cart) {
@@ -174,7 +178,7 @@
       if (btn) {
         const total = cart.getTotalCount();
         btn.hidden = total === 0;
-        btn.textContent = `Ver carrinho de orçamento (${total})`;
+        btn.textContent = `Ver lista de orçamento (${total})`;
       }
     });
   }

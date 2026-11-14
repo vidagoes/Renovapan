@@ -267,7 +267,9 @@
       const data = await request("dashboard?days=" + byId("period").value);
       if (requestNumber !== dashboardRequest) return;
       const metrics = [
-        ["Visitas medidas por aba", data.totals.visits], ["Visualizações", data.totals.views], ["Cliques no WhatsApp", data.totals.clicks],
+        ["Visitas medidas por aba", data.totals.visits], ["Visualizações", data.totals.views],
+        ["Cliques diretos de produtos", data.totals.productClicks], ["Cliques para cotar listas", data.totals.quoteClicks],
+        ["Produtos distintos por lista (soma)", data.totals.quoteProducts],
         ["Vendas registradas", data.totals.sales], ["Valor total das vendas", money(data.totals.amountCents)],
         ["Custos no período", money(data.totals.costsCents)], ["Resultado bruto estimado das vendas", money(data.financial.gross)],
         ["Procuras registradas", data.totals.demands], ["Equipamentos cadastrados", data.products], ["Unidades prontas", data.inventory.ready],
@@ -275,14 +277,14 @@
       ];
       const rank = entries => entries.length ? '<ol>' + entries.map(r => '<li>' + escape(r.name) + ' · ' + r.total + '</li>').join("") + '</ol>' : '<p class="admin-muted">Ainda não há eventos.</p>';
       container.innerHTML = '<dl class="admin-kpis">' + metrics.map(([label, value]) => '<div><dt>' + label + '</dt><dd>' + escape(value) + '</dd></div>').join("")
-        + '</dl><p class="admin-muted">Visitas contam abas com medição permitida. Visualizações contam páginas. Cliques registram interesse e vendas são lançamentos manuais.</p>'
+        + '</dl><p class="admin-muted">A medição depende do consentimento. Cada clique para cotar conta os equipamentos distintos daquela lista. Cliques indicam intenção de consulta. As vendas são lançadas no painel.</p>'
         + '<p class="admin-muted">' + (data.financial.incomplete ? data.financial.incomplete + ' venda(s) com custos de aquisição ou ficha individual ausentes. ' : '')
         + data.stages.map(row => ({ waiting: 'Aguardando reforma', repair: 'Em reforma', testing: 'Em testes', ready: 'Prontas' })[row.technical] + ': ' + row.total).join(' · ') + '</p>'
         + '<div class="admin-card"><label>Indicador por dia <select id="chart-metric"><option value="views">Visualizações</option>'
-        + '<option value="visits">Visitas por aba</option><option value="clicks">Cliques no WhatsApp</option><option value="sales">Vendas</option><option value="amountCents">Receita das vendas</option><option value="costsCents">Custos</option><option value="demands">Procuras</option></select></label>'
+        + '<option value="visits">Visitas por aba</option><option value="productClicks">Cliques diretos de produtos</option><option value="quoteClicks">Cliques para cotar listas</option><option value="quoteProducts">Produtos distintos nas listas</option><option value="sales">Vendas</option><option value="amountCents">Receita das vendas</option><option value="costsCents">Custos</option><option value="demands">Procuras</option></select></label>'
         + '<div id="daily-chart" class="admin-chart" aria-hidden="true"></div>'
-        + '<details><summary>Ver dados por dia</summary><div class="admin-table-scroll"><table class="admin-table"><thead><tr><th>Data</th><th>Visitas</th><th>Visualizações</th><th>Cliques</th><th>Vendas</th><th>Receita</th><th>Custos</th><th>Procuras</th></tr></thead><tbody>'
-        + data.series.map(row => '<tr><td>' + escape(row.day) + '</td><td>' + row.visits + '</td><td>' + row.views + '</td><td>' + row.clicks + '</td><td>' + row.sales + '</td><td>' + escape(money(row.amountCents)) + '</td><td>' + escape(money(row.costsCents)) + '</td><td>' + row.demands + '</td></tr>').join("")
+        + '<details><summary>Ver dados por dia</summary><div class="admin-table-scroll"><table class="admin-table"><thead><tr><th>Data</th><th>Visitas</th><th>Visualizações</th><th>Cliques diretos</th><th>Cliques da lista</th><th>Produtos nas listas</th><th>Vendas</th><th>Receita</th><th>Custos</th><th>Procuras</th></tr></thead><tbody>'
+        + data.series.map(row => '<tr><td>' + escape(row.day) + '</td><td>' + row.visits + '</td><td>' + row.views + '</td><td>' + row.productClicks + '</td><td>' + row.quoteClicks + '</td><td>' + row.quoteProducts + '</td><td>' + row.sales + '</td><td>' + escape(money(row.amountCents)) + '</td><td>' + escape(money(row.costsCents)) + '</td><td>' + row.demands + '</td></tr>').join("")
         + '</tbody></table></div></details></div><div class="admin-columns admin-dashboard-ranks"><section class="admin-card"><h2>Mais visualizados</h2>'
         + rank(data.mostViewed) + '</section><section class="admin-card"><h2>Mais cliques no WhatsApp</h2>' + rank(data.mostClicked) + '</section><section class="admin-card"><h2>Máquinas procuradas</h2>' + rank(data.mostDemanded)
         + '</section><section class="admin-card"><h2>Unidades vendidas</h2>' + rank(data.mostSold)
@@ -321,9 +323,41 @@
     }
   }
 
+  const totpStatus = byId("totp-status");
+  const totpBegin = byId("totp-begin");
+  const totpConfirm = byId("totp-confirm");
+  const totpSecret = byId("totp-secret");
+  let securityView = 0;
+
+  function clearEnrollment() {
+    totpBegin.reset();
+    totpConfirm.reset();
+    totpBegin.hidden = true;
+    totpConfirm.hidden = true;
+    totpSecret.textContent = "";
+  }
+
+  async function loadSecurity(view) {
+    totpStatus.textContent = "Verificando segundo fator…";
+    try {
+      const session = await request("session");
+      if (view !== securityView) return;
+      if (session.totpEnabled) totpStatus.textContent = "Segundo fator ativo.";
+      else if (session.totpAvailable) {
+        totpStatus.textContent = "Segundo fator desativado. Confirme sua senha para configurar.";
+        totpBegin.hidden = false;
+      } else totpStatus.textContent = "Configure a chave de criptografia no servidor para ativar o segundo fator.";
+    } catch (error) {
+      if (view === securityView) totpStatus.textContent = error.message;
+    }
+  }
+
   function showTab(tab) {
     for (const section of document.querySelectorAll("[data-panel]")) section.hidden = section.id !== tab;
     for (const button of document.querySelectorAll("[data-tab]")) button.setAttribute("aria-pressed", String(button.dataset.tab === tab));
+    securityView++;
+    clearEnrollment();
+    if (tab === "security") loadSecurity(securityView);
     if (tab === "dashboard") renderDashboard();
     if (tab === "history") renderHistory();
     if (tab === "stock") operations.loadUnits().catch(error => status(error.message, true));
@@ -332,13 +366,16 @@
     if (tab === "products") refresh().catch(error => status(error.message, true));
   }
 
-  async function openPanel() {
+  async function openPanel(session) {
     authenticated = true;
     byId("login").hidden = true;
     byId("workspace").hidden = false;
     byId("logout").hidden = false;
-    await refresh();
-    showTab("dashboard");
+    byId("admin-nav").hidden = !session.totpEnabled;
+    if (session.totpEnabled) {
+      await refresh();
+      showTab("dashboard");
+    } else showTab("security");
     status("");
   }
 
@@ -346,9 +383,39 @@
     event.preventDefault();
     const form = event.currentTarget;
     run(form.querySelector('button[type="submit"]'), async () => {
-      await request("login", { method: "POST", data: Object.fromEntries(new FormData(form)) });
+      const data = Object.fromEntries(new FormData(form));
+      form.elements.password.value = "";
+      form.elements.otp.value = "";
+      await request("login", { method: "POST", data });
       form.reset();
-      await openPanel();
+      await openPanel(await request("session"));
+    });
+  });
+  totpBegin.addEventListener("submit", event => {
+    event.preventDefault();
+    const view = securityView;
+    run(totpBegin.querySelector('button[type="submit"]'), async () => {
+      const password = totpBegin.elements.password.value;
+      totpBegin.reset();
+      const { secret } = await request("totp/begin", { method: "POST", data: { password } });
+      if (view === securityView) {
+        totpSecret.textContent = secret.match(/.{1,4}/g).join(" ");
+        totpStatus.textContent = "Confirme o código a partir da chave abaixo.";
+        totpConfirm.hidden = false;
+        totpConfirm.elements.otp.focus();
+      }
+      status("");
+    });
+  });
+  totpConfirm.addEventListener("submit", event => {
+    event.preventDefault();
+    run(totpConfirm.querySelector('button[type="submit"]'), async () => {
+      const otp = totpConfirm.elements.otp.value;
+      totpConfirm.reset();
+      await request("totp/confirm", { method: "POST", data: { otp } });
+      await openPanel({ totpEnabled: true });
+      showTab("security");
+      status("Segundo fator ativado. As sessões anteriores foram encerradas.");
     });
   });
   byId("logout").addEventListener("click", event => run(event.currentTarget, async () => {
