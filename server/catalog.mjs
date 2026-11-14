@@ -46,13 +46,13 @@ export function videoLink(value) {
   return url.href;
 }
 
-export function saveProduct(db, id, input, actor) {
+export function saveProduct(db, id, input, actor, key) {
   const p = record(input);
   if (!["draft", "published", "hidden", "archived"].includes(p.visibility)) throw new RequestError(400, "Selecione a visibilidade.");
   const price = p.priceCents == null ? null : quantity(p.priceCents, 0, 100000000000);
   const publicPrice = p.publicPriceCents == null ? null : quantity(p.publicPriceCents, 0, 100000000000);
   if (p.showPrice && publicPrice === null) throw new RequestError(400, "Informe o preço público para exibi-lo no catálogo.");
-  return transaction(db, () => {
+  const save = () => {
     const before = id ? db.prepare("SELECT * FROM products WHERE id = ?").get(id) : null;
     if (id && !before) throw new RequestError(404, "Equipamento não encontrado.");
     const productId = id || randomUUID();
@@ -71,7 +71,8 @@ export function saveProduct(db, id, input, actor) {
     }
     audit(db, actor, "product", productId, id ? "edit" : "create", before, db.prepare("SELECT * FROM products WHERE id = ?").get(productId));
     return { id: productId };
-  });
+  };
+  return key === undefined ? transaction(db, save) : mutation(db, key, ["save-product", id], p, save);
 }
 
 export function duplicateProduct(db, actor, key, id, input) {

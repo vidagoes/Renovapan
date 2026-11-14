@@ -150,8 +150,17 @@ test("API com banco persistente: catálogo, estoque, segurança e indicadores", 
   assert.equal((await api("/api/admin/products", { method: "POST", data: sample, session: true, origin: "https://elsewhere.example" })).status, 403);
   assert.equal((await api("/api/admin/products", { method: "POST", data: sample, session: true, origin: "" })).status, 403);
 
-  const draft = await write("products", { ...sample, visibility: "draft", name: "Rascunho de teste" });
+  const draftData = { ...sample, visibility: "draft", name: "Rascunho de teste" };
+  const draftKey = randomUUID();
+  assert.equal((await write("products", { ...draftData, name: " " })).status, 400);
+  assert.equal((await write("products", { ...draftData, showPrice: true })).status, 400);
+  const draft = await write("products", draftData, "POST", draftKey);
   assert.equal(draft.status, 201);
+  assert.equal(draft.data.product.name, draftData.name);
+  assert.equal(draft.data.product.visibility, "draft");
+  const retry = await write("products", draftData, "POST", draftKey);
+  assert.equal(retry.data.id, draft.data.id);
+  assert.equal((await write("products", { ...draftData, name: "Outro rascunho" }, "POST", draftKey)).status, 409);
   assert.equal((await get(draft.data.id)).status, 404);
   const created = await write("products", sample);
   assert.equal(created.status, 201);

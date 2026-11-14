@@ -24,12 +24,12 @@ window.RenovapanOperations = function ({ request, run, status, escape, option, m
   const opts = (labels, selected) => Object.entries(labels).map(([value, label]) => option(value, label, value === selected)).join("");
   const cents = input => Math.round(input.valueAsNumber * 100);
 
-  async function mutate(form, path, data, method = "POST") {
+  async function mutate(form, path, data, method = "POST", options = {}) {
     const fingerprint = JSON.stringify([path, data]);
     const last = pending.get(form);
     const key = last?.fingerprint === fingerprint ? last.key : crypto.randomUUID();
     pending.set(form, { fingerprint, key });
-    const result = await request(path, { method, data, key });
+    const result = await request(path, { ...options, method, data, key });
     pending.delete(form);
     return result;
   }

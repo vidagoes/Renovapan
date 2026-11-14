@@ -34,6 +34,12 @@
 .admin-choice { text-align: left; width: 100%; overflow-wrap: anywhere; }
 .admin-choice small { display: block; opacity: .85; }
 .admin-muted { color: #516078; font-size: .9rem; }
+.admin-required { color: #b20c1b; }
+.admin-product-fields { border: 0; margin: 12px 0 0; min-width: 0; padding: 0; }
+.admin-save-feedback:not(:empty) { margin-top: 10px; color: #15542e; font-weight: 600; }
+.admin-save-feedback[data-error="true"], #edit-product [aria-invalid="true"] { color: #a30e1a; border-color: #a30e1a; }
+.admin-body .admin-field-error { color: #a30e1a; }
+.admin-field-error:empty { display: none; }
 .admin-editor-section { margin-top: 16px; }
 .admin-editor-section summary { cursor: pointer; font-weight: 700; margin-bottom: 12px; }
 .admin-image-list { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }

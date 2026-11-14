@@ -8,6 +8,7 @@
   const money = cents => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
   const day = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
   const visibility = { draft: "Rascunho", published: "Publicado", hidden: "Oculto", archived: "Arquivado" };
+  const requiredMark = '<span class="admin-required" aria-hidden="true"> *</span>';
   let products = [];
   let editingProduct = null;
   let editingVariant = null;
@@ -29,17 +30,27 @@
   }
 
   async function request(path, options = {}) {
-    const { method = "GET", data, raw, type, key } = options;
+    const { method = "GET", data, raw, type, key, keepForm = false } = options;
     const headers = {};
     if (data !== undefined || raw) headers["Content-Type"] = type || "application/json";
     if (key) headers["Idempotency-Key"] = key;
-    const response = await fetch("/api/admin/" + path, {
-      method, headers, body: raw || (data === undefined ? undefined : JSON.stringify(data))
-    });
+    let response;
+    try {
+      response = await fetch("/api/admin/" + path, {
+        method, headers, body: raw || (data === undefined ? undefined : JSON.stringify(data)),
+        signal: keepForm ? AbortSignal.timeout(30000) : undefined
+      });
+    } catch (error) {
+      if (keepForm) throw new Error("Não foi possível confirmar a operação. Confira a conexão e tente novamente.");
+      throw error;
+    }
     if (response.status === 204) return null;
+    if (response.status === 401 && authenticated) {
+      if (keepForm) throw new Error("Sua sessão expirou. Entre no painel em outra aba e volte para salvar os dados preenchidos.");
+      location.reload();
+    }
     const result = await response.json();
     if (!response.ok) {
-      if (response.status === 401 && authenticated) location.reload();
       const error = new Error(result.error || "Não foi possível concluir a operação.");
       error.status = response.status;
       throw error;
@@ -47,14 +58,14 @@
     return result;
   }
 
-  async function run(control, operation) {
+  async function run(control, operation, report = status) {
     if (control.disabled) return;
     control.disabled = true;
-    status("Processando…");
+    report("Processando…");
     try {
       await operation();
     } catch (error) {
-      status(error.message || "Não foi possível concluir a operação.", true);
+      report(error.message || "Não foi possível concluir a operação.", true);
     } finally {
       control.disabled = false;
     }
@@ -77,7 +88,7 @@
     ).join("") || '<p class="admin-muted">Nenhum equipamento encontrado.</p>';
   }
 
-  function imageEditor(form, initial, detailed = false) {
+  function imageEditor(form, initial, detailed = false, report = status) {
     const images = initial.map(item => detailed ? { ...item } : item);
     const list = form.querySelector(".admin-image-list");
     const inputs = [...form.querySelectorAll('input[type="file"]')];
@@ -105,9 +116,10 @@
     for (const input of inputs) input.addEventListener("change", async () => {
       if (busy) return;
       const files = [...input.files];
+      if (!files.length) return;
       const invalid = files.some(file => !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024);
       if (invalid || files.length + images.length > 12) {
-        status("Escolha até 12 imagens JPEG, PNG ou WebP de até 5 MB cada.", true);
+        report("Escolha até 12 imagens JPEG, PNG ou WebP de até 5 MB cada.", true);
         input.value = "";
         return;
       }
@@ -116,12 +128,12 @@
       for (const other of inputs) if (other !== input) other.disabled = true;
       await run(input, async () => {
         for (const file of files) {
-          const { id } = await request("media", { method: "POST", raw: file, type: file.type });
+          const { id } = await request("media", { method: "POST", raw: file, type: file.type, keepForm: form.id === "edit-product" });
           images.push(detailed ? { id, kind: "current", public: false } : id);
           render();
         }
-        status("Fotos carregadas. Salve a ficha para vinculá-las.");
-      });
+        report("Fotos carregadas. Salve a ficha para vinculá-las.");
+      }, report);
       for (const control of inputs) control.disabled = false;
       submit.disabled = false;
       busy = false;
@@ -138,6 +150,47 @@
       + '<div class="admin-image-list"></div>';
   }
 
+  function productSpecs(text) {
+    const lines = text.split("\n").map(line => line.trim()).filter(Boolean);
+    if (lines.length > 30) throw new Error("Informe até 30 especificações.");
+    return lines.map(line => {
+      const separator = line.indexOf(":");
+      const name = separator > 0 ? line.slice(0, separator).trim() : "";
+      const value = separator > 0 ? line.slice(separator + 1).trim() : "";
+      if (!name || !value) throw new Error("Digite o nome e o valor de cada especificação, separados por dois-pontos. Exemplo: Capacidade: 40 kg.");
+      if (name.length > 80 || value.length > 250) throw new Error("Use até 80 caracteres no nome e 250 no valor de cada especificação.");
+      return [name, value];
+    });
+  }
+
+  function validateProduct(form, report) {
+    const fields = form.elements;
+    const requiredFields = [[fields.name, "Informe o nome do equipamento."],
+      [fields.category, "Informe a categoria."], [fields.description, "Preencha a descrição."]];
+    for (const [field, message] of requiredFields) {
+      field.setCustomValidity(field.value.trim() ? "" : message);
+    }
+    fields.publicPrice.setCustomValidity(fields.showPrice.checked && !fields.publicPrice.value && !fields.publicPrice.validity.badInput
+      ? "Informe o preço público para exibi-lo no catálogo." : "");
+    fields.specs.setCustomValidity("");
+    let specs;
+    try {
+      specs = productSpecs(fields.specs.value);
+    } catch (error) {
+      fields.specs.setCustomValidity(error.message);
+    }
+    const invalid = Array.from(fields).find(field => field.willValidate && !field.validity.valid);
+    if (!invalid) return specs;
+    const inlineError = byId("product-field-error");
+    inlineError.textContent = invalid.validationMessage;
+    invalid.after(inlineError);
+    invalid.setAttribute("aria-invalid", "true");
+    invalid.setAttribute("aria-errormessage", inlineError.id);
+    report(invalid.validationMessage, true);
+    invalid.reportValidity();
+    return null;
+  }
+
   function renderProduct() {
     const product = currentProduct();
     const editor = byId("product-editor");
@@ -146,55 +199,95 @@
       return;
     }
     const p = product || { visibility: "draft", images: [], specs: [], variants: [] };
-    const input = (name, label, max, required = false) => '<label>' + label + '<input name="' + name + '" maxlength="' + max
+    const input = (name, label, max, required = false) => '<label>' + label + (required ? requiredMark : "") + '<input name="' + name + '" maxlength="' + max
       + '" value="' + escape(p[name]) + '"' + (required ? ' required' : '') + ' /></label>';
-    editor.innerHTML = '<form id="edit-product" class="admin-card"><h2>' + (product ? escape(p.name) : "Novo equipamento") + '</h2>'
+    editor.innerHTML = '<form id="edit-product" class="admin-card" novalidate><h2>' + (product ? escape(p.name) : "Novo equipamento") + '</h2>'
+      + '<p class="admin-muted">Os campos com ' + requiredMark + ' são obrigatórios.</p><fieldset class="admin-product-fields">'
       + '<div class="admin-fields">' + input("name", "Nome", 140, true) + input("category", "Categoria", 80, true)
       + input("brand", "Marca", 100) + input("model", "Modelo", 100) + '</div>'
-      + '<label>Descrição<textarea name="description" rows="4" maxlength="6000" required>' + escape(p.description) + '</textarea></label>'
+      + '<label>Descrição' + requiredMark + '<textarea name="description" rows="4" maxlength="6000" required>' + escape(p.description) + '</textarea></label>'
       + '<label>Especificações<textarea name="specs" rows="4" maxlength="10000" placeholder="Capacidade: 40 kg">' + escape(p.specs.map(spec => spec.join(": ")).join("\n"))
       + '</textarea><small>Uma especificação por linha, no formato Nome: valor.</small></label>'
       + '<div class="admin-fields">' + input("video", "Link HTTPS do vídeo", 700) + input("leadTime", "Prazo estimado", 240)
       + '<label>Preço interno em R$<input type="number" name="price" min="0" max="1000000000" step="0.01" value="' + (p.priceCents == null ? "" : (p.priceCents / 100).toFixed(2)) + '" /></label>'
-      + '<label>Preço público em R$<input type="number" name="publicPrice" min="0" max="1000000000" step="0.01" value="' + (p.publicPriceCents == null ? "" : (p.publicPriceCents / 100).toFixed(2)) + '" /></label>'
-      + '<label>Ordem de exibição<input name="sortOrder" type="number" min="0" max="1000000" step="1" required value="' + (p.sortOrder || 0) + '" /></label>'
-      + '<label>Visibilidade<select name="visibility">' + Object.entries(visibility).map(([value, label]) => option(value, label, p.visibility === value)).join("") + '</select></label></div>'
+      + '<label>Preço público em R$<span id="public-price-required"' + (p.showPrice ? '' : ' hidden') + '>' + requiredMark + '</span><input type="number" name="publicPrice" min="0" max="1000000000" step="0.01"' + (p.showPrice ? ' required' : '') + ' value="' + (p.publicPriceCents == null ? "" : (p.publicPriceCents / 100).toFixed(2)) + '" /></label>'
+      + '<label>Ordem de exibição<input name="sortOrder" type="number" min="0" max="1000000" step="1" value="' + (p.sortOrder || 0) + '" /></label>'
+      + '<label>Visibilidade' + requiredMark + '<select name="visibility" required>' + Object.entries(visibility).map(([value, label]) => option(value, label, p.visibility === value)).join("") + '</select></label></div>'
       + '<label><input type="checkbox" name="showPrice"' + (p.showPrice ? ' checked' : '') + ' /> Exibir preço no catálogo</label>'
       + '<label><input type="checkbox" name="featured"' + (p.featured ? ' checked' : '') + ' /> Mostrar nos destaques da página inicial</label>'
-      + photoField("Fotos gerais", true) + '<button type="submit" class="button button--primary">Salvar equipamento</button></form>'
+      + photoField("Fotos gerais", true) + '</fieldset><button type="submit" class="button button--primary">Salvar equipamento</button>'
+      + '<p class="admin-save-feedback" role="status" id="product-save-status" tabindex="-1"></p>'
+      + '<small id="product-field-error" class="admin-field-error"></small></form>'
       + (product ? '<section class="admin-card admin-editor-section"><div class="admin-heading"><h2>Cores e quantidades</h2>'
         + '<button type="button" id="add-variant" class="button button--outline">Adicionar cor</button></div><div id="variant-list"></div><div id="variant-editor"></div></section>' : '');
     const form = byId("edit-product");
-    const images = imageEditor(form, p.images);
+    const fields = form.elements;
+    const fieldset = form.querySelector("fieldset");
+    const saveButton = form.querySelector('button[type="submit"]');
+    const report = (message, error = false) => {
+      const feedback = form.querySelector(".admin-save-feedback");
+      feedback.textContent = message;
+      feedback.dataset.error = String(error);
+    };
+    const images = imageEditor(form, p.images, false, report);
+    const clearFieldError = field => {
+      if (field.getAttribute("aria-invalid") !== "true") return;
+      field.removeAttribute("aria-invalid");
+      field.removeAttribute("aria-errormessage");
+      byId("product-field-error").textContent = "";
+      report("");
+    };
+    fields.showPrice.addEventListener("change", () => {
+      fields.publicPrice.required = fields.showPrice.checked;
+      fields.publicPrice.setCustomValidity("");
+      clearFieldError(fields.publicPrice);
+      byId("public-price-required").hidden = !fields.showPrice.checked;
+    });
+    form.addEventListener("input", event => {
+      event.target.setCustomValidity?.("");
+      clearFieldError(event.target);
+    });
     form.addEventListener("submit", event => {
       event.preventDefault();
-      run(form.querySelector('button[type="submit"]'), async () => {
-        const f = form.elements;
-        const specs = f.specs.value.split("\n").filter(line => line.trim()).map(line => {
-          const separator = line.indexOf(":");
-          if (separator < 1 || !line.slice(separator + 1).trim()) throw new Error("Use Nome: valor em cada linha das especificações.");
-          return [line.slice(0, separator).trim(), line.slice(separator + 1).trim()];
-        });
+      if (saveButton.disabled) return;
+      const previousError = form.querySelector('[aria-invalid="true"]');
+      if (previousError) clearFieldError(previousError);
+      const specs = validateProduct(form, report);
+      if (!specs) return;
+      run(saveButton, async () => {
+        const f = fields;
         const data = {
-          name: f.name.value, category: f.category.value, brand: f.brand.value, model: f.model.value,
-          description: f.description.value, specs, images, video: f.video.value, leadTime: f.leadTime.value,
+          name: f.name.value.trim(), category: f.category.value.trim(), brand: f.brand.value, model: f.model.value,
+          description: f.description.value.trim(), specs, images, video: f.video.value, leadTime: f.leadTime.value,
           priceCents: f.price.value === "" ? null : Math.round(f.price.valueAsNumber * 100),
           publicPriceCents: f.publicPrice.value === "" ? null : Math.round(f.publicPrice.valueAsNumber * 100),
-          sortOrder: f.sortOrder.valueAsNumber,
+          sortOrder: f.sortOrder.value === "" ? 0 : f.sortOrder.valueAsNumber,
           visibility: f.visibility.value, showPrice: f.showPrice.checked, featured: f.featured.checked
         };
-        const result = await request(product ? "products/" + product.id : "products", { method: product ? "PUT" : "POST", data });
-        editingProduct = result.id;
-        await refresh();
-        renderProduct();
-        status("Equipamento salvo.");
-      });
+        fieldset.disabled = true;
+        try {
+          const { product: saved } = await operations.mutate(form, product ? "products/" + product.id : "products",
+            data, product ? "PUT" : "POST", { keepForm: true });
+          products = products.filter(item => item.id !== saved.id).concat(saved)
+            .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "pt-BR"));
+          if (!form.isConnected) { renderList(); return; }
+          editingProduct = saved.id;
+          byId("product-search").value = "";
+          renderList();
+          renderProduct();
+          const feedback = byId("product-save-status");
+          feedback.textContent = saved.visibility === "draft" ? "Equipamento salvo como rascunho." : "Equipamento salvo.";
+          if (!byId("products").hidden) feedback.focus({ preventScroll: false });
+        } finally {
+          fieldset.disabled = false;
+        }
+      }, report);
     });
 
     if (!product) return;
     const duplication = document.createElement("details");
     duplication.className = "admin-card admin-editor-section";
-    duplication.innerHTML = '<summary>Duplicar cadastro</summary><form><label>Nome da cópia<input name="name" maxlength="140" required value="'
+    duplication.innerHTML = '<summary>Duplicar cadastro</summary><form><label>Nome da cópia' + requiredMark + '<input name="name" maxlength="140" required value="'
       + escape(product.name.slice(0, 130) + " (cópia)") + '"></label><label><input name="copyDetails" type="checkbox" checked> Copiar descrição e especificações</label>'
       + '<label><input name="copyPhotos" type="checkbox"> Copiar fotos gerais</label><button type="submit" class="button button--primary">Criar rascunho</button></form>';
     editor.append(duplication);
@@ -235,7 +328,7 @@
     }
     if (!variant && editingVariant !== "new") { editor.replaceChildren(); return; }
     editor.innerHTML = '<form id="edit-variant"><div class="admin-fields">'
-      + '<label>Nome da cor<input name="color" maxlength="70" value="' + escape(variant?.color) + '" required /></label>'
+      + '<label>Nome da cor' + requiredMark + '<input name="color" maxlength="70" value="' + escape(variant?.color) + '" required /></label>'
       + '<label>Código da cor (opcional)<input name="hex" maxlength="7" placeholder="#DB1A22" value="' + escape(variant?.hex) + '" /></label></div>'
       + photoField("Fotos desta cor", true) + '<button type="submit" class="button button--primary">Salvar cor</button>'
       + (variant ? ' <button id="edit-stock" type="button" class="button button--outline">Cadastrar máquina desta cor</button>' : '') + '</form>';

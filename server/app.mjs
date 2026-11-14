@@ -220,9 +220,13 @@ export function createApp(db, { origin, totpEncryptionKey = totpKey(), prototype
           if (upload) return json(response, 201, storeImage(db, request.headers["content-type"], data));
           const actor = owner.username;
           const key = request.headers["idempotency-key"];
-          if (pathname === "/api/admin/products" && method === "POST") return json(response, 201, saveProduct(db, null, data, actor));
           const product = pathname.match(productRoute);
-          if (product && method === "PUT") return json(response, 200, saveProduct(db, product[1], data, actor));
+          const createProduct = pathname === "/api/admin/products" && method === "POST";
+          if (createProduct || (product && method === "PUT")) {
+            const { id } = saveProduct(db, createProduct ? null : product[1], data, actor, key);
+            const [saved] = products(db, { admin: true, id });
+            return json(response, createProduct ? 201 : 200, { id, product: saved });
+          }
           const duplicate = pathname.match(duplicateRoute);
           if (duplicate && method === "POST") return json(response, 201, duplicateProduct(db, actor, key, duplicate[1], data));
           const variant = pathname.match(variantRoute);
